@@ -626,6 +626,8 @@ function BetterQuestLog:OnBottomLevelBtnCheck(wndHandler, wndControl) -- From Bu
 	--	BetterQuestLog:OnQuestTrackProgrammatically(wndHandler, wndControl)
 	--end
 	
+	wndHandler:SetCheck(true)
+	
 	-- Text Coloring
 	if self.wndLastBottomLevelBtnSelection and self.wndLastBottomLevelBtnSelection:IsValid() then
 		local queQuest = wndHandler:GetData()
@@ -645,6 +647,7 @@ function BetterQuestLog:OnBottomLevelBtnCheck(wndHandler, wndControl) -- From Bu
 end
 
 function BetterQuestLog:OnBottomLevelBtnUncheck(wndHandler, wndControl)
+	wndHandler:SetCheck(false);
     local queQuest = wndHandler:FindChild("TopLevelBtn"):GetData()
 	local nDifficulty = queQuest:GetColoredDifficulty()
 	local tConData = ktConToUI[nDifficulty]
@@ -954,6 +957,8 @@ end
 local BetterQuestLogInst = BetterQuestLog:new()
 BetterQuestLogInst:Init()
 
+local lastSelected = nil
+
 function BetterQuestLog:CheckTrackedToggle( wndHandler, wndControl, eMouseButton )
 	local wndTopBtn = wndHandler:GetParent():FindChild("TopLevelBtn")
 	if Apollo.IsShiftKeyDown() then
@@ -961,12 +966,16 @@ function BetterQuestLog:CheckTrackedToggle( wndHandler, wndControl, eMouseButton
 		local bNewTrackValue = not queSelected:IsTracked()
 		queSelected:SetTracked(bNewTrackValue)
 		Event_FireGenericEvent("GenericEvent_QuestLog_TrackBtnClicked", queSelected)
-	end
-	
-	if wndTopBtn:IsChecked() then
-		self:OnBottomLevelBtnUncheck(wndTopBtn, wndTopBtn)
 	else
-		self:OnBottomLevelBtnCheck(wndTopBtn, wndTopBtn)
+		if wndTopBtn:IsChecked() then
+			self:OnBottomLevelBtnUncheck(wndTopBtn, wndTopBtn)
+		else
+			if lastSelected ~= nil then
+				lastSelected:SetCheck(false)
+			end
+			lastSelected = wndTopBtn		
+			self:OnBottomLevelBtnCheck(wndTopBtn, wndTopBtn)
+		end
 	end
 	
 	self:RedrawEverything()
