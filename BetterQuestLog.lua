@@ -102,7 +102,7 @@ function BetterQuestLog:Initialize()
 	self.wndMain:FindChild("LeftSideFilterBtnShowActive"):SetCheck(true)
 	self.wndMain:FindChild("QuestAbandonPopoutBtn"):AttachWindow(self.wndMain:FindChild("QuestAbandonConfirm"))
 	self.wndMain:FindChild("QuestInfoMoreInfoToggleBtn"):AttachWindow(self.wndMain:FindChild("QuestInfoMoreInfoTextBG"))
-	self.wndMain:FindChild("EpisodeSummaryExpandBtn"):AttachWindow(self.wndMain:FindChild("EpisodeSummaryPopoutTextBG"))
+	--self.wndMain:FindChild("EpisodeSummaryExpandBtn"):AttachWindow(self.wndMain:FindChild("EpisodeSummaryPopoutTextBG"))
 
 	-- Measure Windows
 	local wndMeasure = Apollo.LoadForm("BetterQuestLog.xml", "TopLevelItem", nil, self)
@@ -390,9 +390,9 @@ function BetterQuestLog:ResizeRight()
 
 	-- Episode Summary
 	nHeight = 0
-	if self.wndMain:FindChild("EpisodeSummaryExpandBtn"):IsChecked() then
+	--if self.wndMain:FindChild("EpisodeSummaryExpandBtn"):IsChecked() then
 		nWidth, nHeight = self.wndMain:FindChild("EpisodeSummaryPopoutText"):SetHeightToContentHeight()
-	end
+	--end
 	nLeft, nTop, nRight, nBottom = self.wndMain:FindChild("EpisodeInfo"):GetAnchorOffsets()
 	if self.wndMain:FindChild("EpisodeInfo"):IsShown() then
 		self.wndMain:FindChild("EpisodeInfo"):SetAnchorOffsets(nLeft, nTop, nRight, nTop + nHeight + self.knEpisodeInfoHeight)
@@ -440,28 +440,28 @@ function BetterQuestLog:DrawRightSide(queSelected)
 
 	local nDifficulty = queSelected:GetColoredDifficulty() or 0
 	if eQuestState == Quest.QuestState_Completed then
-		wndRight:FindChild("QuestInfoTitleIcon"):SetTooltip(Apollo.GetString("QuestLog_HasBeenCompleted"))
-		wndRight:FindChild("QuestInfoTitleIcon"):SetSprite("CRB_Basekit:kitIcon_Green_Checkmark")
+		--wndRight:FindChild("QuestInfoTitleIcon"):SetTooltip(Apollo.GetString("QuestLog_HasBeenCompleted"))
+		--wndRight:FindChild("QuestInfoTitleIcon"):SetSprite("CRB_Basekit:kitIcon_Green_Checkmark")
 		wndRight:FindChild("QuestInfoTitle"):SetText(String_GetWeaselString(Apollo.GetString("QuestLog_Completed"), queSelected:GetTitle()))
 		wndRight:FindChild("QuestInfoTitle"):SetTextColor(ApolloColor.new("ff7fffb9"))
 	else
 		if eQuestState == Quest.QuestState_Achieved then
-			wndRight:FindChild("QuestInfoTitleIcon"):SetTooltip(Apollo.GetString("QuestLog_QuestReadyToTurnIn"))
-			wndRight:FindChild("QuestInfoTitleIcon"):SetSprite("CRB_Basekit:kitIcon_Green_Checkmark")
+			--wndRight:FindChild("QuestInfoTitleIcon"):SetTooltip(Apollo.GetString("QuestLog_QuestReadyToTurnIn"))
+			--wndRight:FindChild("QuestInfoTitleIcon"):SetSprite("CRB_Basekit:kitIcon_Green_Checkmark")
 		else
-			wndRight:FindChild("QuestInfoTitleIcon"):SetTooltip(Apollo.GetString("QuestLog_ObjectivesNotComplete"))
-			wndRight:FindChild("QuestInfoTitleIcon"):SetSprite("CRB_Basekit:kitIcon_Gold_Checkbox")
+			--wndRight:FindChild("QuestInfoTitleIcon"):SetTooltip(Apollo.GetString("QuestLog_ObjectivesNotComplete"))
+			--wndRight:FindChild("QuestInfoTitleIcon"):SetSprite("CRB_Basekit:kitIcon_Gold_Checkbox")
 		end
 
 		local tConData = ktConToUI[nDifficulty]
 		if tConData then
 			local strDifficulty = "<T Font=\"CRB_InterfaceMedium\" TextColor=\"" .. tConData[2] .. "\"> " .. tConData[3] .. "</T>"
 			wndRight:FindChild("QuestInfoTitle"):SetText(queSelected:GetTitle())
-			wndRight:FindChild("QuestInfoDifficultyPic"):SetSprite(tConData[1])
-			wndRight:FindChild("QuestInfoDifficultyPic"):SetTooltip(String_GetWeaselString(Apollo.GetString("QuestLog_IntendedLevel"), queSelected:GetTitle(), queSelected:GetConLevel()))
+			--wndRight:FindChild("QuestInfoDifficultyPic"):SetSprite(tConData[1])
+			--wndRight:FindChild("QuestInfoDifficultyPic"):SetTooltip(String_GetWeaselString(Apollo.GetString("QuestLog_IntendedLevel"), queSelected:GetTitle(), queSelected:GetConLevel()))
 			
-			wndRight:FindChild("QuestInfoDifficultyText"):SetAML("<P Font=\"CRB_InterfaceMedium_B\" TextColor=\"ff7fffb9\">" .. String_GetWeaselString(Apollo.GetString("QuestLog_Difficulty"), strDifficulty) .. "</P>")
-			wndRight:FindChild("QuestInfoTitle"):SetTextColor(ApolloColor.new("white"))
+			--wndRight:FindChild("QuestInfoDifficultyText"):SetAML("<P Font=\"CRB_InterfaceMedium_B\" TextColor=\"ff7fffb9\">" .. String_GetWeaselString(Apollo.GetString("QuestLog_Difficulty"), strDifficulty) .. "</P>")
+			--wndRight:FindChild("QuestInfoTitle"):SetTextColor(ApolloColor.new("white"))
 		end
 	end
 	
@@ -469,10 +469,10 @@ function BetterQuestLog:DrawRightSide(queSelected)
 	if tConData then
 		local strDifficulty = "<T Font=\"CRB_InterfaceMedium\" TextColor=\"" .. tConData[2] .. "\"> " .. tConData[3] .. "</T>"
 		wndRight:FindChild("QuestInfoTitle"):SetText(queSelected:GetTitle())
-		wndRight:FindChild("QuestInfoDifficultyPic"):SetSprite(tConData[1])
-		wndRight:FindChild("QuestInfoDifficultyPic"):SetTooltip(String_GetWeaselString(Apollo.GetString("QuestLog_IntendedLevel"), queSelected:GetTitle(), queSelected:GetConLevel()))
+		--wndRight:FindChild("QuestInfoDifficultyPic"):SetSprite(tConData[1])
+		--wndRight:FindChild("QuestInfoDifficultyPic"):SetTooltip(String_GetWeaselString(Apollo.GetString("QuestLog_IntendedLevel"), queSelected:GetTitle(), queSelected:GetConLevel()))
 		
-		wndRight:FindChild("QuestInfoDifficultyText"):SetAML("<P Font=\"CRB_InterfaceMedium_B\" TextColor=\"ff7fffb9\">" .. String_GetWeaselString(Apollo.GetString("QuestLog_Difficulty"), strDifficulty) .. "</P>")
+		--wndRight:FindChild("QuestInfoDifficultyText"):SetAML("<P Font=\"CRB_InterfaceMedium_B\" TextColor=\"ff7fffb9\">" .. String_GetWeaselString(Apollo.GetString("QuestLog_Difficulty"), strDifficulty) .. "</P>")
 		wndRight:FindChild("QuestInfoTitle"):SetTextColor(ApolloColor.new("white"))
 	end
 	
@@ -497,8 +497,8 @@ function BetterQuestLog:DrawRightSide(queSelected)
 	wndRight:FindChild("EpisodeSummaryProgText"):SetAML(string.format("<P Font=\"CRB_InterfaceSmall\" TextColor=\"ff31fcf6\" Align=\"Center\">"..
 	"(<T Font=\"CRB_InterfaceSmall\" TextColor=\"ffffb62e\" Align=\"Center\">%s</T>/%s)</P>", nEpisodeProgress, nEpisodeMax))
 	wndRight:FindChild("EpisodeSummaryPopoutText"):SetAML("<P Font=\"CRB_InterfaceMedium\" TextColor=\"ff2f94ac\">"..strEpisodeDesc.."</P>")
-	wndRight:FindChild("EpisodeSummaryPopoutText"):SetHeightToContentHeight()
-	wndRight:FindChild("EpisodeSummaryExpandBtn"):Enable(not bIsTasks)
+	--wndRight:FindChild("EpisodeSummaryPopoutText"):SetHeightToContentHeight()
+	--wndRight:FindChild("EpisodeSummaryExpandBtn"):Enable(not bIsTasks)
 
 	-- More Info
 	local strMoreInfo = ""
