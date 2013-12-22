@@ -342,7 +342,7 @@ function BetterQuestLog:ResizeTree()
 		
 		-- Sorting by difficulty of the quest (stored in the TopLevelBtn)
 		local function SortByDifficulty(a, b)
-			return (a:FindChild("TopLevelBtn"):GetData():GetColoredDifficulty()) > (b:FindChild("TopLevelBtn"):GetData():GetColoredDifficulty())
+			return (b:FindChild("TopLevelBtn"):GetData():GetColoredDifficulty()) > (a:FindChild("TopLevelBtn"):GetData():GetColoredDifficulty())
 		end
 	
 		self.wndMain:FindChild("LeftSideScroll"):ArrangeChildrenVert(0, SortByDifficulty)
@@ -586,7 +586,7 @@ function BetterQuestLog:DrawRightSide(queSelected)
 	end
 
 	-- Bottom Buttons (outside of Scroll)
-	self.wndMain:FindChild("QuestInfoControlsHideBtn"):Show(eQuestState == Quest.QuestState_Abandoned or eQuestState == Quest.QuestState_Mentioned)
+	--self.wndMain:FindChild("QuestInfoControlsHideBtn"):Show(eQuestState == Quest.QuestState_Abandoned or eQuestState == Quest.QuestState_Mentioned) --commented out this btn
 	self.wndMain:FindChild("QuestInfoControlButtons"):Show(eQuestState == Quest.QuestState_Accepted or eQuestState == Quest.QuestState_Achieved or eQuestState == Quest.QuestState_Botched)
 	if eQuestState ~= Quest.QuestState_Abandoned then
 		local bCanShare = queSelected:CanShare()
@@ -647,7 +647,7 @@ function BetterQuestLog:OnBottomLevelBtnCheck(wndHandler, wndControl) -- From Bu
 end
 
 function BetterQuestLog:OnBottomLevelBtnUncheck(wndHandler, wndControl)
-	wndHandler:SetCheck(false);
+	wndHandler:FindChild("TopLevelBtn"):SetCheck(false)
     local queQuest = wndHandler:FindChild("TopLevelBtn"):GetData()
 	local nDifficulty = queQuest:GetColoredDifficulty()
 	local tConData = ktConToUI[nDifficulty]
@@ -910,11 +910,13 @@ function BetterQuestLog:IsFilteringAsActive()
 end
 
 function BetterQuestLog:IsFilteringAsFinished()
-	return self.wndMain:FindChild("LeftSideFilterBtnShowFinished"):IsChecked()
+	return false -- commented out this filter
+	--return self.wndMain:FindChild("LeftSideFilterBtnShowFinished"):IsChecked()
 end
 
 function BetterQuestLog:IsFilteringAsHidden()
-	return self.wndMain:FindChild("LeftSideFilterBtnShowHidden"):IsChecked()
+	return false -- commented out this filter
+	--return self.wndMain:FindChild("LeftSideFilterBtnShowHidden"):IsChecked()
 end
 
 function BetterQuestLog:HelperPrereqFailed(tCurrItem)
@@ -961,21 +963,21 @@ local lastSelected = nil
 
 function BetterQuestLog:CheckTrackedToggle( wndHandler, wndControl, eMouseButton )
 	local wndTopBtn = wndHandler:GetParent():FindChild("TopLevelBtn")
+	
+	-- handle the tracking
 	if Apollo.IsShiftKeyDown() then
 		local queSelected = wndTopBtn:GetData()
 		local bNewTrackValue = not queSelected:IsTracked()
 		queSelected:SetTracked(bNewTrackValue)
 		Event_FireGenericEvent("GenericEvent_QuestLog_TrackBtnClicked", queSelected)
-	else
-		if wndTopBtn:IsChecked() then
-			self:OnBottomLevelBtnUncheck(wndTopBtn, wndTopBtn)
-		else
-			if lastSelected ~= nil then
-				lastSelected:SetCheck(false)
-			end
-			lastSelected = wndTopBtn		
-			self:OnBottomLevelBtnCheck(wndTopBtn, wndTopBtn)
+	elseif not wndTopBtn:IsChecked() then
+	--if the button we selected was already checked, do NOT uncheck it if shift key was down
+		-- if the button we selected is not checked, check it
+		if lastSelected ~= nil then
+			lastSelected:SetCheck(false)
 		end
+		lastSelected = wndTopBtn
+		self:OnBottomLevelBtnCheck(wndTopBtn, wndTopBtn)
 	end
 	
 	self:RedrawEverything()
