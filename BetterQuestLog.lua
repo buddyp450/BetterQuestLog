@@ -50,6 +50,19 @@ local ktConToUI =
 	{ "CRB_Basekit:kitFixedProgBar_9", "fffb00ff", Apollo.GetString("QuestLog_Impossible") }
 }
 
+local ktConToUINoAlpha =
+{
+	{ "CRB_Basekit:kitFixedProgBar_1", "9aaea3", Apollo.GetString("QuestLog_Trivial") },
+	{ "CRB_Basekit:kitFixedProgBar_2", "37ff00", Apollo.GetString("QuestLog_Easy") },
+	{ "CRB_Basekit:kitFixedProgBar_3", "46ffff", Apollo.GetString("QuestLog_Simple") },
+	{ "CRB_Basekit:kitFixedProgBar_4", "3052fc", Apollo.GetString("QuestLog_Standard") },
+	{ "CRB_Basekit:kitFixedProgBar_5", "ffffff", Apollo.GetString("QuestLog_Average") },
+	{ "CRB_Basekit:kitFixedProgBar_6", "ffd400", Apollo.GetString("QuestLog_Moderate") },
+	{ "CRB_Basekit:kitFixedProgBar_7", "ff6a00", Apollo.GetString("QuestLog_Tough") },
+	{ "CRB_Basekit:kitFixedProgBar_8", "ff0000", Apollo.GetString("QuestLog_Hard") },
+	{ "CRB_Basekit:kitFixedProgBar_9", "fb00ff", Apollo.GetString("QuestLog_Impossible") }
+}
+
 local ktValidCallButtonStats =
 {
 	[Quest.QuestState_Ignored] 		= true,
@@ -101,7 +114,7 @@ function BetterQuestLog:Initialize()
 	-- Default states
 	--self.wndMain:FindChild("LeftSideFilterBtnShowActive"):SetCheck(true)
 	self.wndMain:FindChild("QuestAbandonPopoutBtn"):AttachWindow(self.wndMain:FindChild("QuestAbandonConfirm"))
-	--self.wndMain:FindChild("QuestInfoMoreInfoToggleBtn"):AttachWindow(self.wndMain:FindChild("QuestInfoMoreInfoTextBG"))
+	self.wndMain:FindChild("QuestInfoMoreInfoToggleBtn"):AttachWindow(self.wndMain:FindChild("QuestInfoMoreInfoTextBG"))
 	--self.wndMain:FindChild("EpisodeSummaryExpandBtn"):AttachWindow(self.wndMain:FindChild("EpisodeSummaryPopoutTextBG"))
 
 	-- Measure Windows
@@ -121,11 +134,11 @@ function BetterQuestLog:Initialize()
 	self.knObjectivesItemHeight = wndMeasure:GetHeight()
 	wndMeasure:Destroy()
 
-	--self.knRewardRecListHeight = self.wndMain:FindChild("QuestInfoRewardRecFrame"):GetHeight()
-	--self.knRewardChoListHeight = self.wndMain:FindChild("QuestInfoRewardChoFrame"):GetHeight()
-	--self.knMoreInfoHeight = self.wndMain:FindChild("QuestInfoMoreInfoFrame"):GetHeight()
-	--self.knEpisodeInfoHeight = self.wndMain:FindChild("EpisodeInfo"):GetHeight()
-
+	self.knRewardRecListHeight = self.wndMain:FindChild("QuestInfoRewardRecFrame"):GetHeight()
+	self.knRewardChoListHeight = self.wndMain:FindChild("QuestInfoRewardChoFrame"):GetHeight()
+	self.knMoreInfoHeight = self.wndMain:FindChild("QuestInfoMoreInfoFrame"):GetHeight()
+	self.knEpisodeInfoHeight = self.wndMain:FindChild("EpisodeInfo"):GetHeight()
+	
 	self:DestroyAndRedraw()
 end
 
@@ -165,27 +178,30 @@ function BetterQuestLog:DestroyAndRedraw() -- TODO, remove as much as possible t
 		self.arLeftTreeMap = {}
 	end
 
-	--self:RedrawLeftTree()
+	self:RedrawLeftTree()
 
 	-- Show first in Quest Log
-	local wndTop = self.wndMain:FindChild("LeftSideScroll"):GetChildren()[1]
+	local wndTop = self.wndMain:FindChild("LeftSideScroll"):FindChild("TopLevelBtn") -- gets the first top level
+	local doShowQuestLog = false
 	if wndTop then
-		wndTop:FindChild("TopLevelBtn"):SetCheck(true)
+		--wndTop:FindChild("TopLevelBtn"):SetCheck(true)
 		--self:RedrawLeftTree()
-		local wndMiddle = wndTop:FindChild("TopLevelItems"):GetChildren()[1]
-		if wndMiddle then
-			wndMiddle:FindChild("MiddleLevelBtn"):SetCheck(true)
+		--local wndMiddle = wndTop:FindChild("TopLevelItems"):GetChildren()[1]
+		--if wndMiddle then
+	--		wndMiddle:FindChild("MiddleLevelBtn"):SetCheck(true)
 			--self:RedrawLeftTree()
-			local wndBot = wndMiddle:FindChild("MiddleLevelItems"):GetChildren()[1]
-			if wndBot then
-				wndBot:FindChild("BottomLevelBtn"):SetCheck(true)
-				self:OnBottomLevelBtnCheck(wndBot:FindChild("BottomLevelBtn"), wndBot:FindChild("BottomLevelBtn"))
-			end
-		end
+	--		local wndBot = wndMiddle:FindChild("MiddleLevelItems"):GetChildren()[1]
+	--		if wndBot then
+	--			wndBot:FindChild("BottomLevelBtn"):SetCheck(true)
+	--			self:OnBottomLevelBtnCheck(wndBot:FindChild("BottomLevelBtn"), wndBot:FindChild("BottomLevelBtn"))
+	--		end
+	--	end
+		self:CheckTrackedToggle(wndTop, wndTop, 0)
+		doShowQuestLog = true
 	end
 
 	self:RedrawEverything()
-	self.wndMain:FindChild("RightSide"):Show(false) --Nothing selected hide right side
+	self.wndMain:FindChild("RightSide"):Show(doShowQuestLog) --If nothing selected hide right side
 end
 
 function BetterQuestLog:RedrawFromUI()
@@ -204,7 +220,7 @@ function BetterQuestLog:RedrawEverything()
 		self:DrawRightSide(self.wndMain:FindChild("RightSide"):GetData())
 	end
 
-	--self:ResizeRight()
+	self:ResizeRight()
 end
 
 function BetterQuestLog:RedrawLeftTree()
@@ -247,8 +263,11 @@ function BetterQuestLog:RedrawLeftTree()
 					local wndTop = self:FactoryProduce(self.wndMain:FindChild("LeftSideScroll"), "TopLevelItem", strQuestKey)
 					wndTop:FindChild("TopLevelBtn"):SetData(queQuest)
 					
-					--testing
-					wndTop:FindChild("TopLevelBtnText"):SetText(queQuest:GetTitle())
+					--if queQuest:IsTracked() then -- was attempting to set a unicode character here which isn't possible in LUA
+--						wndTop:FindChild("TopLevelBtnText"):SetText(queQuest:GetTitle().." ["..queQuest:GetConLevel().."] \u....")
+					--else
+						wndTop:FindChild("TopLevelBtnText"):SetText("["..queQuest:GetConLevel().."] "..queQuest:GetTitle())
+					--end
 					
 					-- todo change quest title color
 					local nDifficulty = queQuest:GetColoredDifficulty()
@@ -261,11 +280,56 @@ function BetterQuestLog:RedrawLeftTree()
 					--wndTop:FindChild("TopLevelProgBar"):SetMax(nMax)
 					--wndTop:FindChild("TopLevelProgBar"):SetProgress(nProgress)
 	
-					-- resize the button text if it's too long. WARNING: must be the same font that's used in the XML to work
-					if Apollo.GetTextWidth("CRB_InterfaceMedium", queQuest:GetTitle()) > wndTop:FindChild("TopLevelBtnText"):GetWidth() then
-						local nLeft, nTop, nRight, nBottom = wndTop:GetAnchorOffsets()
-						wndTop:SetAnchorOffsets(nLeft, nTop, nRight, nTop + (self.knBottomLevelHeight * 1.5)) -- our resize code that happens later will account for this
+					-- store the bottom level icon sprite and whether or not it has a call associated with it
+					local strBottomLevelIconSprite = ""
+					local bHasCall = queQuest:GetContactInfo()
+				
+					-- set the icon based on the enum state of the quest
+					local statusText = "" --TODO: localize
+					if eState == Quest.QuestState_Botched then
+						strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Metal_CircleX"
+						statusText = "(Botched)"
+					elseif eState == Quest.QuestState_Abandoned or eState == Quest.QuestState_Mentioned then
+						strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Metal_CircleExclamation"
+						statusText = "(Abandoned)"
+					elseif eState == Quest.QuestState_Achieved and bHasCall then
+						strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Metal_CircleCheckmarkAccent"
+						bHasCompletedQuest = true
+						statusText = "(Call)"
+					--elseif eState == Quest.QuestState_Achieved and not bHasCall then
+						--strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Metal_CircleCheckmark"
+						--bHasCompletedQuest = true
+						--statusText = "(Complete)"
+					elseif queQuest:IsTracked() then
+						--strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Holo_HazardProximity"
+						strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Holo_Checkmark"
+					else
+						statusText = ""
 					end
+					
+					if eState == Quest.QuestState_Achieved and not bHasCall then
+						bHasCompletedQuest = true
+						statusText = "(Complete)"
+					end
+	
+					-- resize the button text if it's too long. WARNING: must be the same font that's used in the XML to work
+					--if Apollo.GetTextWidth("CRB_InterfaceMedium", queQuest:GetTitle()) > wndTop:FindChild("TopLevelBtnText"):GetWidth() then
+					--	local nLeft, nTop, nRight, nBottom = wndTop:GetAnchorOffsets()
+					--	wndTop:SetAnchorOffsets(nLeft, nTop, nRight, nTop + (self.knTopLevelHeight * 1.5)) -- our resize code that happens later will account for this
+					--end
+					local spacer = "..."
+					local textWidth = Apollo.GetTextWidth("CRB_InterfaceMedium", queQuest:GetTitle())
+					local title = queQuest:GetTitle()
+					local totalText = title .. " " .. statusText
+					
+					--keep shortening until it fits, admittedly lazy and expensive approach to sizing
+					--TODO: refactor
+					while Apollo.GetTextWidth("CRB_InterfaceMedium", totalText) > wndTop:FindChild("TopLevelBtnText"):GetWidth() do
+						title = string.sub(title, 0, string.len(title)-1)
+						totalText = title .. spacer .. " " .. statusText
+					end
+					
+					wndTop:FindChild("TopLevelBtnText"):SetText(totalText)
 	
 					-- if the quest button is checked, change it's text color to indicate that it is selected
 					if wndTop:FindChild("TopLevelBtn"):IsChecked() then
@@ -274,25 +338,12 @@ function BetterQuestLog:RedrawLeftTree()
 						--wndTop:FindChild("TopLevelBtnText"):SetTextColor(kcrDeselectedColor)
 					end
 	
-					-- store the bottom level icon sprite and whether or not it has a call associated with it
-					local strBottomLevelIconSprite = ""
-					local bHasCall = queQuest:GetContactInfo()
-				
-					-- set the icon based on the enum state of the quest
-					if eState == Quest.QuestState_Botched then
-						strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Metal_CircleX"
-					elseif eState == Quest.QuestState_Abandoned or eState == Quest.QuestState_Mentioned then
-						strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Metal_CircleExclamation"
-					elseif eState == Quest.QuestState_Achieved and bHasCall then
-						strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Metal_CircleCheckmarkAccent"
-						bHasCompletedQuest = true
-					elseif eState == Quest.QuestState_Achieved and not bHasCall then
-						strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Metal_CircleCheckmark"
-						bHasCompletedQuest = true
-					elseif queQuest:IsTracked() then
-						strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Holo_HazardProximity"
-					end
+					
+					
 					wndTop:FindChild("TopLevelBtnIcon"):SetSprite(strBottomLevelIconSprite)
+					
+					
+					--wndTop:FindChild("TopLevelStatusText"):SetText(statusText)
 				
 					-- Set the appropriate sprite icon and tooltip for middle level
 					--if bFilteringFinished or bHasCompletedQuest then
@@ -390,9 +441,9 @@ function BetterQuestLog:ResizeRight()
 
 	-- Episode Summary
 	nHeight = 0
-	if self.wndMain:FindChild("EpisodeSummaryExpandBtn"):IsChecked() then
+	--if self.wndMain:FindChild("EpisodeSummaryExpandBtn"):IsChecked() then
 		nWidth, nHeight = self.wndMain:FindChild("EpisodeSummaryPopoutText"):SetHeightToContentHeight()
-	end
+	--end
 	nLeft, nTop, nRight, nBottom = self.wndMain:FindChild("EpisodeInfo"):GetAnchorOffsets()
 	if self.wndMain:FindChild("EpisodeInfo"):IsShown() then
 		self.wndMain:FindChild("EpisodeInfo"):SetAnchorOffsets(nLeft, nTop, nRight, nTop + nHeight + self.knEpisodeInfoHeight)
@@ -461,7 +512,7 @@ function BetterQuestLog:DrawRightSide(queSelected)
 			--wndRight:FindChild("QuestInfoDifficultyPic"):SetTooltip(String_GetWeaselString(Apollo.GetString("QuestLog_IntendedLevel"), queSelected:GetTitle(), queSelected:GetConLevel()))
 			
 			--wndRight:FindChild("QuestInfoDifficultyText"):SetAML("<P Font=\"CRB_InterfaceMedium_B\" TextColor=\"ff7fffb9\">" .. String_GetWeaselString(Apollo.GetString("QuestLog_Difficulty"), strDifficulty) .. "</P>")
-			wndRight:FindChild("QuestInfoTitle"):SetTextColor(ApolloColor.new("white"))
+			--wndRight:FindChild("QuestInfoTitle"):SetTextColor(ApolloColor.new("white"))
 		end
 	end
 	
@@ -476,8 +527,8 @@ function BetterQuestLog:DrawRightSide(queSelected)
 		wndRight:FindChild("QuestInfoTitle"):SetTextColor(ApolloColor.new("white"))
 	end
 	
-	--wndRight:FindChild("QuestInfoDescriptionText"):SetAML("<P Font=\"CRB_InterfaceMedium\" TextColor=\"ff2f94ac\">"..strQuestSummary.."</P>")
-	--wndRight:FindChild("QuestInfoDescriptionText"):SetHeightToContentHeight()
+	wndRight:FindChild("QuestInfoDescriptionText"):SetAML("<P Font=\"CRB_InterfaceMedium\" TextColor=\"ff2f94ac\">"..strQuestSummary.."</P>")
+	wndRight:FindChild("QuestInfoDescriptionText"):SetHeightToContentHeight()
 
 	-- Episode Summary
 	local epiParent = queSelected:GetEpisode()
@@ -497,94 +548,93 @@ function BetterQuestLog:DrawRightSide(queSelected)
 	wndRight:FindChild("EpisodeSummaryProgText"):SetAML(string.format("<P Font=\"CRB_InterfaceSmall\" TextColor=\"ff31fcf6\" Align=\"Center\">"..
 	"(<T Font=\"CRB_InterfaceSmall\" TextColor=\"ffffb62e\" Align=\"Center\">%s</T>/%s)</P>", nEpisodeProgress, nEpisodeMax))
 	wndRight:FindChild("EpisodeSummaryPopoutText"):SetAML("<P Font=\"CRB_InterfaceMedium\" TextColor=\"ff2f94ac\">"..strEpisodeDesc.."</P>")
-	wndRight:FindChild("EpisodeSummaryPopoutText"):SetHeightToContentHeight()
-	wndRight:FindChild("EpisodeSummaryExpandBtn"):Enable(not bIsTasks)
+	--wndRight:FindChild("EpisodeSummaryPopoutText"):SetHeightToContentHeight()
+	--wndRight:FindChild("EpisodeSummaryExpandBtn"):Enable(not bIsTasks)
 
 	-- More Info
 	local strMoreInfo = ""
 	local tMoreInfoText = queSelected:GetMoreInfoText()
-	
-	--if #tMoreInfoText > 0 and self.wndMain:FindChild("QuestInfoMoreInfoToggleBtn"):IsChecked() then
---		for idx, tValues in pairs(tMoreInfoText) do
-			--if string.len(tValues.say) > 0 or string.len(tValues.response) > 0 then
---				strMoreInfo = strMoreInfo .. "<P Font=\"CRB_InterfaceMedium\" TextColor=\"ff2f94ac\">"..tValues.say.."</P>"
-				--strMoreInfo = strMoreInfo .. "<P Font=\"CRB_InterfaceMedium\" TextColor=\"ffffffff\">"..tValues.response.."</P>"
-				--if idx ~= #tMoreInfoText then
---					strMoreInfo = strMoreInfo .. "<P TextColor=\"0\">.</P>"
-				--end
-			--end
-		--end
-	--else
---		wndRight:FindChild("QuestInfoMoreInfoToggleBtn"):SetCheck(false)
-		--wndRight:FindChild("QuestInfoMoreInfoToggleBtnText"):SetText(Apollo.GetString("QuestLog_OpenPlaybackLog"))
-	--end
-	--wndRight:FindChild("QuestInfoMoreInfoText"):SetAML(strMoreInfo)
-	--wndRight:FindChild("QuestInfoMoreInfoText"):SetHeightToContentHeight()
-	--wndRight:FindChild("QuestInfoMoreInfoFrame"):Show(#tMoreInfoText > 0)
+	if #tMoreInfoText > 0 and self.wndMain:FindChild("QuestInfoMoreInfoToggleBtn"):IsChecked() then
+		for idx, tValues in pairs(tMoreInfoText) do
+			if string.len(tValues.say) > 0 or string.len(tValues.response) > 0 then
+				strMoreInfo = strMoreInfo .. "<P Font=\"CRB_InterfaceMedium\" TextColor=\"ff2f94ac\">"..tValues.say.."</P>"
+				strMoreInfo = strMoreInfo .. "<P Font=\"CRB_InterfaceMedium\" TextColor=\"ffffffff\">"..tValues.response.."</P>"
+				if idx ~= #tMoreInfoText then
+					strMoreInfo = strMoreInfo .. "<P TextColor=\"0\">.</P>"
+				end
+			end
+		end
+	else
+		wndRight:FindChild("QuestInfoMoreInfoToggleBtn"):SetCheck(false)
+		wndRight:FindChild("QuestInfoMoreInfoToggleBtnText"):SetText(Apollo.GetString("QuestLog_OpenPlaybackLog"))
+	end
+	wndRight:FindChild("QuestInfoMoreInfoText"):SetAML(strMoreInfo)
+	wndRight:FindChild("QuestInfoMoreInfoText"):SetHeightToContentHeight()
+	wndRight:FindChild("QuestInfoMoreInfoFrame"):Show(#tMoreInfoText > 0)
 
 	-- Objectives
-	--wndRight:FindChild("QuestInfoObjectivesList"):DestroyChildren()
-	--if eQuestState == Quest.QuestState_Achieved then
---		local wndObj = Apollo.LoadForm("BetterQuestLog.xml", "ObjectivesItem", wndRight:FindChild("QuestInfoObjectivesList"), self)
-		--local strAchieved = string.format("<T Font=\"CRB_InterfaceMedium\" TextColor=\"ffffffff\">%s</T>", queSelected:GetCompletionObjectiveText())
-		--wndObj:FindChild("ObjectivesItemText"):SetAML(strAchieved)
-		--wndRight:FindChild("QuestInfoObjectivesTitle"):SetText(Apollo.GetString("QuestLog_ReadyToTurnIn"))
-	--elseif eQuestState == Quest.QuestState_Completed then
---		for key, tObjData in pairs(queSelected:GetVisibleObjectiveData()) do
-			--if tObjData.completed < tObjData.needed then
---				local wndObj = Apollo.LoadForm("BetterQuestLog.xml", "ObjectivesItem", wndRight:FindChild("QuestInfoObjectivesList"), self)
-				--wndObj:FindChild("ObjectivesItemText"):SetAML(self:HelperBuildObjectiveTitleString(queSelected, tObjData))
-				--self:HelperBuildObjectiveProgBar(queSelected, tObjData, wndObj, true)
-				--wndObj:FindChild("ObjectiveBullet"):SetSprite("CRB_Basekit:kitIcon_Holo_Checkmark")
---				wndObj:FindChild("ObjectiveBullet"):SetBGColor("ffffff00")
-			--end
-		--end
-		--wndRight:FindChild("QuestInfoObjectivesTitle"):SetText(Apollo.GetString("QuestLog_CompletedObjectives"))
-	--elseif eQuestState ~= Quest.QuestState_Mentioned then
---		for key, tObjData in pairs(queSelected:GetVisibleObjectiveData()) do
-			--if tObjData.completed < tObjData.needed then
---				local wndObj = Apollo.LoadForm("BetterQuestLog.xml", "ObjectivesItem", wndRight:FindChild("QuestInfoObjectivesList"), self)
-				--wndObj:FindChild("ObjectivesItemText"):SetAML(self:HelperBuildObjectiveTitleString(queSelected, tObjData))
-				--self:HelperBuildObjectiveProgBar(queSelected, tObjData, wndObj)
-			--end
-		--end
-		--wndRight:FindChild("QuestInfoObjectivesTitle"):SetText(Apollo.GetString("QuestLog_Objectives"))
-	--end
+	wndRight:FindChild("QuestInfoObjectivesList"):DestroyChildren()
+	if eQuestState == Quest.QuestState_Achieved then
+		local wndObj = Apollo.LoadForm("BetterQuestLog.xml", "ObjectivesItem", wndRight:FindChild("QuestInfoObjectivesList"), self)
+		local strAchieved = string.format("<T Font=\"CRB_InterfaceMedium\" TextColor=\"ffffffff\">%s</T>", queSelected:GetCompletionObjectiveText())
+		wndObj:FindChild("ObjectivesItemText"):SetAML(strAchieved)
+		wndRight:FindChild("QuestInfoObjectivesTitle"):SetText(Apollo.GetString("QuestLog_ReadyToTurnIn"))
+	elseif eQuestState == Quest.QuestState_Completed then
+		for key, tObjData in pairs(queSelected:GetVisibleObjectiveData()) do
+			if tObjData.completed < tObjData.needed then
+				local wndObj = Apollo.LoadForm("BetterQuestLog.xml", "ObjectivesItem", wndRight:FindChild("QuestInfoObjectivesList"), self)
+				wndObj:FindChild("ObjectivesItemText"):SetAML(self:HelperBuildObjectiveTitleString(queSelected, tObjData))
+				self:HelperBuildObjectiveProgBar(queSelected, tObjData, wndObj, true)
+				wndObj:FindChild("ObjectiveBullet"):SetSprite("CRB_Basekit:kitIcon_Holo_Checkmark")
+				wndObj:FindChild("ObjectiveBullet"):SetBGColor("ffffff00")
+			end
+		end
+		wndRight:FindChild("QuestInfoObjectivesTitle"):SetText(Apollo.GetString("QuestLog_CompletedObjectives"))
+	elseif eQuestState ~= Quest.QuestState_Mentioned then
+		for key, tObjData in pairs(queSelected:GetVisibleObjectiveData()) do
+			if tObjData.completed < tObjData.needed then
+				local wndObj = Apollo.LoadForm("BetterQuestLog.xml", "ObjectivesItem", wndRight:FindChild("QuestInfoObjectivesList"), self)
+				wndObj:FindChild("ObjectivesItemText"):SetAML(self:HelperBuildObjectiveTitleString(queSelected, tObjData))
+				self:HelperBuildObjectiveProgBar(queSelected, tObjData, wndObj)
+			end
+		end
+		wndRight:FindChild("QuestInfoObjectivesTitle"):SetText(Apollo.GetString("QuestLog_Objectives"))
+	end
 
 	-- Rewards Received
-	--local tRewardsChoice, tRewardsRec = queSelected:GetRewardData()
-	--wndRight:FindChild("QuestInfoRewardRecList"):DestroyChildren()
-	--for key, tRewardData in pairs(tRewardsRec) do
---		local wndReward = Apollo.LoadForm("BetterQuestLog.xml", "RewardItem", wndRight:FindChild("QuestInfoRewardRecList"), self)
-		--self:HelperBuildRewardsRec(wndReward, tRewardData, true)
-	--end
+	local tRewardsChoice, tRewardsRec = queSelected:GetRewardData()
+	wndRight:FindChild("QuestInfoRewardRecList"):DestroyChildren()
+	for key, tRewardData in pairs(tRewardsRec) do
+		local wndReward = Apollo.LoadForm("BetterQuestLog.xml", "RewardItem", wndRight:FindChild("QuestInfoRewardRecList"), self)
+		self:HelperBuildRewardsRec(wndReward, tRewardData, true)
+	end
 
 	-- Rewards To Choose
---	wndRight:FindChild("QuestInfoRewardChoList"):DestroyChildren()
---	for key, tRewardData in pairs(tRewardsChoice) do
-		--local wndReward = Apollo.LoadForm("BetterQuestLog.xml", "RewardItem", wndRight:FindChild("QuestInfoRewardChoList"), self)
-		--self:HelperBuildRewardsRec(wndReward, tRewardData, false)
-	--end
+	wndRight:FindChild("QuestInfoRewardChoList"):DestroyChildren()
+	for key, tRewardData in pairs(tRewardsChoice) do
+		local wndReward = Apollo.LoadForm("BetterQuestLog.xml", "RewardItem", wndRight:FindChild("QuestInfoRewardChoList"), self)
+		self:HelperBuildRewardsRec(wndReward, tRewardData, false)
+	end
 
 	-- Special reward formatting for finished quests
-	--if eQuestState == Quest.QuestState_Completed then
---		wndRight:FindChild("QuestInfoRewardRecTitle"):SetText(Apollo.GetString("QuestLog_YouReceived"))
-		--wndRight:FindChild("QuestInfoRewardChoTitle"):SetText(Apollo.GetString("QuestLog_YouChoseFrom"))
-	--else
---		wndRight:FindChild("QuestInfoRewardRecTitle"):SetText(Apollo.GetString("QuestLog_WillReceive"))
-		--wndRight:FindChild("QuestInfoRewardChoTitle"):SetText(Apollo.GetString("QuestLog_CanChooseOne"))
-	--end
+	if eQuestState == Quest.QuestState_Completed then
+		wndRight:FindChild("QuestInfoRewardRecTitle"):SetText(Apollo.GetString("QuestLog_YouReceived"))
+		wndRight:FindChild("QuestInfoRewardChoTitle"):SetText(Apollo.GetString("QuestLog_YouChoseFrom"))
+	else
+		wndRight:FindChild("QuestInfoRewardRecTitle"):SetText(Apollo.GetString("QuestLog_WillReceive"))
+		wndRight:FindChild("QuestInfoRewardChoTitle"):SetText(Apollo.GetString("QuestLog_CanChooseOne"))
+	end
 
 	-- Call Button
---	if queSelected:GetContactInfo() and ktValidCallButtonStats[eQuestState] then
-		--local idContact, strContactName, strSpriteName = queSelected:GetContactInfo()
---		
-		--wndRight:FindChild("QuestInfoCallFrame"):Show(true)
-		--wndRight:FindChild("QuestInfoCostumeWindow"):SetCostumeToCreatureId(idContact)
-		--wndRight:FindChild("QuestInfoCallFrameText"):SetAML("<P Font=\"CRB_HeaderLarge\" TextColor=\"ff7fffb9\">" .. Apollo.GetString("QuestLog_ContactNPC") .. "</P><P Font=\"CRB_HeaderLarge\">" .. strContactName .. "</P>")
-	--else
---		wndRight:FindChild("QuestInfoCallFrame"):Show(false)
---	end
+	if queSelected:GetContactInfo() and ktValidCallButtonStats[eQuestState] then
+		local idContact, strContactName, strSpriteName = queSelected:GetContactInfo()
+		
+		wndRight:FindChild("QuestInfoCallFrame"):Show(true)
+		wndRight:FindChild("QuestInfoCostumeWindow"):SetCostumeToCreatureId(idContact)
+		wndRight:FindChild("QuestInfoCallFrameText"):SetAML("<P Font=\"CRB_HeaderLarge\" TextColor=\"ff7fffb9\">" .. Apollo.GetString("QuestLog_ContactNPC") .. "</P><P Font=\"CRB_HeaderLarge\">" .. strContactName .. "</P>")
+	else
+		wndRight:FindChild("QuestInfoCallFrame"):Show(false)
+	end
 
 	-- Bottom Buttons (outside of Scroll)
 	--self.wndMain:FindChild("QuestInfoControlsHideBtn"):Show(eQuestState == Quest.QuestState_Abandoned or eQuestState == Quest.QuestState_Mentioned) --commented out this btn
@@ -621,22 +671,22 @@ function BetterQuestLog:OnMiddleLevelBtnCheck(wndHandler, wndControl)
 end
 
 -- converted to use top button
-function BetterQuestLog:OnBottomLevelBtnCheck(wndHandler, wndControl) -- From Button or OnQuestObjectiveUpdated
-	-- Track this if the user was holding shift
-	--if Apollo.IsShiftKeyDown() then
-	--	BetterQuestLog:OnQuestTrackProgrammatically(wndHandler, wndControl)
-	--end
-	
+function BetterQuestLog:OnBottomLevelBtnCheck(wndHandler, wndControl) -- From Button or OnQuestObjectiveUpdated	
 	wndHandler:SetCheck(true)
+	local queQuest = wndHandler:GetData()
+	local nDifficulty = queQuest:GetColoredDifficulty()
+	local tConData = ktConToUINoAlpha[nDifficulty]
 	
 	-- Text Coloring
 	if self.wndLastBottomLevelBtnSelection and self.wndLastBottomLevelBtnSelection:IsValid() then
-		local queQuest = wndHandler:GetData()
-		local nDifficulty = queQuest:GetColoredDifficulty()
-		local tConData = ktConToUI[nDifficulty]
-		self.wndLastBottomLevelBtnSelection:FindChild("TopLevelBtnText"):SetTextColor(tConData[2])
+		self.wndLastBottomLevelBtnSelection:FindChild("TopLevelBtnText"):SetTextColor("FF"..tConData[2])
 	end
 	
+	--wndHandler:FindChild("TopLevelBtn"):SetBGColor(tConData[2])
+	--wndHandler:FindChild("TopLevelBtn"):SetSprite("ActionSetBuilder_TEMP:spr_TEMP_ActionSetBarFrame_Stretch")]
+	local myBg = wndHandler:GetParent():FindChild("BottomLevelQuestLinkBtn"):FindChild("ProgressBarBG")
+	myBg:SetBGColor(ApolloColor.new("80"..tConData[2]))
+	myBg:Show(true)
 	wndHandler:FindChild("TopLevelBtnText"):SetTextColor(kcrSelectedColor)
 	self.wndLastBottomLevelBtnSelection = wndHandler
 
@@ -647,22 +697,24 @@ function BetterQuestLog:OnBottomLevelBtnCheck(wndHandler, wndControl) -- From Bu
 	self:RedrawEverything()
 end
 
-function BetterQuestLog:OnBottomLevelBtnUncheck(wndHandler, wndControl)
-	wndHandler:FindChild("TopLevelBtn"):SetCheck(false)
-    local queQuest = wndHandler:FindChild("TopLevelBtn"):GetData()
-	local nDifficulty = queQuest:GetColoredDifficulty()
-	local tConData = ktConToUI[nDifficulty]
-	wndHandler:FindChild("TopLevelBtnText"):SetTextColor(tConData[2])
+--function BetterQuestLog:OnBottomLevelBtnUncheck(wndHandler, wndControl)
+--	wndHandler:FindChild("TopLevelBtn"):SetCheck(false)
+    --local queQuest = wndHandler:FindChild("TopLevelBtn"):GetData()
+	--local nDifficulty = queQuest:GetColoredDifficulty()
+	--local tConData = ktConToUI[nDifficulty]
+	--wndHandler:FindChild("TopLevelBtnText"):SetTextColor(tConData[2])
 	
 	-- Track this if the user was holding shift
 	--if Apollo.IsShiftKeyDown() then
 	--	BetterQuestLog:OnQuestTrackProgrammatically(wndHandler, wndControl)
 	---end
 	
-	self.wndMain:FindChild("QuestInfoControls"):Show(false)
-	self.wndMain:FindChild("RightSide"):Show(false)
-	self:RedrawEverything() -- Not Needed
-end
+	
+	
+	--self.wndMain:FindChild("QuestInfoControls"):Show(false)
+	--self.wndMain:FindChild("RightSide"):Show(false)
+	--self:RedrawEverything() -- Not Needed
+--end
 
 --function BetterQuestLog:OnBottomLevelBtnDown( wndHandler, wndControl, eMouseButton )
 --	if eMouseButton == 1 and Apollo.IsShiftKeyDown() then
@@ -907,8 +959,8 @@ function BetterQuestLog:HelperBuildObjectiveProgBar(queQuest, tObjective, wndObj
 end
 
 function BetterQuestLog:IsFilteringAsActive()
-	return true -- commented out all of the filters, we should only ever have to care about ACTIVE quests, leave the past in the past! :D
 	--return self.wndMain:FindChild("LeftSideFilterBtnShowActive"):IsChecked()
+	return true
 end
 
 function BetterQuestLog:IsFilteringAsFinished()
@@ -966,8 +1018,10 @@ local lastSelected = nil
 function BetterQuestLog:CheckTrackedToggle( wndHandler, wndControl, eMouseButton )
 	local wndTopBtn = wndHandler:GetParent():FindChild("TopLevelBtn")
 	
-	-- handle the tracking
-	if Apollo.IsShiftKeyDown() then
+	if eMouseButton == 1 and Apollo.IsShiftKeyDown() then
+		Event_FireGenericEvent("GenericEvent_QuestLink", wndTopBtn:GetData())
+	elseif Apollo.IsShiftKeyDown() then
+		-- handle tracking
 		local queSelected = wndTopBtn:GetData()
 		local bNewTrackValue = not queSelected:IsTracked()
 		queSelected:SetTracked(bNewTrackValue)
@@ -977,6 +1031,8 @@ function BetterQuestLog:CheckTrackedToggle( wndHandler, wndControl, eMouseButton
 		-- if the button we selected is not checked, check it
 		if lastSelected ~= nil then
 			lastSelected:SetCheck(false)
+			local lastBg = lastSelected:GetParent():FindChild("BottomLevelQuestLinkBtn"):FindChild("ProgressBarBG")
+			lastBg:Show(false)
 		end
 		lastSelected = wndTopBtn
 		self:OnBottomLevelBtnCheck(wndTopBtn, wndTopBtn)
