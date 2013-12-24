@@ -263,12 +263,6 @@ function BetterQuestLog:RedrawLeftTree()
 					local wndTop = self:FactoryProduce(self.wndMain:FindChild("LeftSideScroll"), "TopLevelItem", strQuestKey)
 					wndTop:FindChild("TopLevelBtn"):SetData(queQuest)
 					
-					--if queQuest:IsTracked() then -- was attempting to set a unicode character here which isn't possible in LUA
---						wndTop:FindChild("TopLevelBtnText"):SetText(queQuest:GetTitle().." ["..queQuest:GetConLevel().."] \u....")
-					--else
-						wndTop:FindChild("TopLevelBtnText"):SetText("["..queQuest:GetConLevel().."] "..queQuest:GetTitle())
-					--end
-					
 					-- todo change quest title color
 					local nDifficulty = queQuest:GetColoredDifficulty()
 					local tConData = ktConToUI[nDifficulty]
@@ -320,13 +314,14 @@ function BetterQuestLog:RedrawLeftTree()
 					local spacer = "..."
 					local textWidth = Apollo.GetTextWidth("CRB_InterfaceMedium", queQuest:GetTitle())
 					local title = queQuest:GetTitle()
-					local totalText = title .. " " .. statusText
+					local queLvlText = "["..queQuest:GetConLevel().."]"
+					local totalText = queLvlText .. " " .. title .. " " .. statusText
 					
 					--keep shortening until it fits, admittedly lazy and expensive approach to sizing
 					--TODO: refactor
 					while Apollo.GetTextWidth("CRB_InterfaceMedium", totalText) > wndTop:FindChild("TopLevelBtnText"):GetWidth() do
 						title = string.sub(title, 0, string.len(title)-1)
-						totalText = title .. spacer .. " " .. statusText
+						totalText = queLvlText .. " " .. title .. spacer .. " " .. statusText
 					end
 					
 					wndTop:FindChild("TopLevelBtnText"):SetText(totalText)
