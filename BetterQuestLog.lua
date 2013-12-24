@@ -259,7 +259,8 @@ function BetterQuestLog:RedrawLeftTree()
 				or (self:IsFilteringAsFinished() and eState == Quest.QuestState_Completed)
 				or (self:IsFilteringAsHidden() and queQuest:IsIgnored()) then
 
-					local strQuestKey = "C"..qcCategory:GetId().."E"..epiEpisode:GetId().."Q"..queQuest:GetId()
+					--local strQuestKey = "C"..qcCategory:GetId().."E"..epiEpisode:GetId().."Q"..queQuest:GetId()
+					local strQuestKey = "Q"..queQuest:GetId()
 					local wndTop = self:FactoryProduce(self.wndMain:FindChild("LeftSideScroll"), "TopLevelItem", strQuestKey)
 					wndTop:FindChild("TopLevelBtn"):SetData(queQuest)
 					
@@ -1026,8 +1027,11 @@ function BetterQuestLog:CheckTrackedToggle( wndHandler, wndControl, eMouseButton
 		-- if the button we selected is not checked, check it
 		if lastSelected ~= nil then
 			lastSelected:SetCheck(false)
-			local lastBg = lastSelected:GetParent():FindChild("BottomLevelQuestLinkBtn"):FindChild("ProgressBarBG")
-			lastBg:Show(false)
+			
+			if lastSelected:GetParent() ~= nil and lastSelected:GetParent():FindChild("BottomLevelQuestLinkBtn") ~= nil then
+				local lastBg = lastSelected:GetParent():FindChild("BottomLevelQuestLinkBtn"):FindChild("ProgressBarBG")
+				lastBg:Show(false)
+			end
 		end
 		lastSelected = wndTopBtn
 		self:OnBottomLevelBtnCheck(wndTopBtn, wndTopBtn)
