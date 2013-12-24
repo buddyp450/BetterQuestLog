@@ -1,4 +1,4 @@
-<Addon Name="BetterQuestLog" Author="Buddy Patton (buddyp450)" APIVersion="2" Version="0.1" Description="Better quest log with not nearly as many tree nodes.">
+<Addon Name="BetterQuestLog" Author="buddyp450" APIVersion="3" Version="1.0" Description="Better quest log with not nearly as many tree nodes.">
     <Script Name="BetterQuestLog.lua"/>
     <Form Name="BetterQuestLog.xml"/>
     <ReplaceAddon Name="QuestLog"/>
