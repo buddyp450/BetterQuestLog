@@ -99,7 +99,7 @@ function BetterQuestLog:Initialize()
 	self.nQuestCountMax = QuestLog_GetMaxCount()
 
 	-- Default states
-	self.wndMain:FindChild("LeftSideFilterBtnShowActive"):SetCheck(true)
+	--self.wndMain:FindChild("LeftSideFilterBtnShowActive"):SetCheck(true)
 	self.wndMain:FindChild("QuestAbandonPopoutBtn"):AttachWindow(self.wndMain:FindChild("QuestAbandonConfirm"))
 	self.wndMain:FindChild("QuestInfoMoreInfoToggleBtn"):AttachWindow(self.wndMain:FindChild("QuestInfoMoreInfoTextBG"))
 	--self.wndMain:FindChild("EpisodeSummaryExpandBtn"):AttachWindow(self.wndMain:FindChild("EpisodeSummaryPopoutTextBG"))
@@ -125,7 +125,7 @@ function BetterQuestLog:Initialize()
 	self.knRewardChoListHeight = self.wndMain:FindChild("QuestInfoRewardChoFrame"):GetHeight()
 	self.knMoreInfoHeight = self.wndMain:FindChild("QuestInfoMoreInfoFrame"):GetHeight()
 	self.knEpisodeInfoHeight = self.wndMain:FindChild("EpisodeInfo"):GetHeight()
-
+	
 	self:DestroyAndRedraw()
 end
 
@@ -165,27 +165,30 @@ function BetterQuestLog:DestroyAndRedraw() -- TODO, remove as much as possible t
 		self.arLeftTreeMap = {}
 	end
 
-	--self:RedrawLeftTree()
+	self:RedrawLeftTree()
 
 	-- Show first in Quest Log
-	local wndTop = self.wndMain:FindChild("LeftSideScroll"):GetChildren()[1]
+	local wndTop = self.wndMain:FindChild("LeftSideScroll"):FindChild("TopLevelBtn") -- gets the first top level
+	local doShowQuestLog = false
 	if wndTop then
-		wndTop:FindChild("TopLevelBtn"):SetCheck(true)
+		--wndTop:FindChild("TopLevelBtn"):SetCheck(true)
 		--self:RedrawLeftTree()
-		local wndMiddle = wndTop:FindChild("TopLevelItems"):GetChildren()[1]
-		if wndMiddle then
-			wndMiddle:FindChild("MiddleLevelBtn"):SetCheck(true)
+		--local wndMiddle = wndTop:FindChild("TopLevelItems"):GetChildren()[1]
+		--if wndMiddle then
+	--		wndMiddle:FindChild("MiddleLevelBtn"):SetCheck(true)
 			--self:RedrawLeftTree()
-			local wndBot = wndMiddle:FindChild("MiddleLevelItems"):GetChildren()[1]
-			if wndBot then
-				wndBot:FindChild("BottomLevelBtn"):SetCheck(true)
-				self:OnBottomLevelBtnCheck(wndBot:FindChild("BottomLevelBtn"), wndBot:FindChild("BottomLevelBtn"))
-			end
-		end
+	--		local wndBot = wndMiddle:FindChild("MiddleLevelItems"):GetChildren()[1]
+	--		if wndBot then
+	--			wndBot:FindChild("BottomLevelBtn"):SetCheck(true)
+	--			self:OnBottomLevelBtnCheck(wndBot:FindChild("BottomLevelBtn"), wndBot:FindChild("BottomLevelBtn"))
+	--		end
+	--	end
+		self:CheckTrackedToggle(wndTop, wndTop, 0)
+		doShowQuestLog = true
 	end
 
 	self:RedrawEverything()
-	self.wndMain:FindChild("RightSide"):Show(false) --Nothing selected hide right side
+	self.wndMain:FindChild("RightSide"):Show(doShowQuestLog) --If nothing selected hide right side
 end
 
 function BetterQuestLog:RedrawFromUI()
@@ -620,12 +623,7 @@ function BetterQuestLog:OnMiddleLevelBtnCheck(wndHandler, wndControl)
 end
 
 -- converted to use top button
-function BetterQuestLog:OnBottomLevelBtnCheck(wndHandler, wndControl) -- From Button or OnQuestObjectiveUpdated
-	-- Track this if the user was holding shift
-	--if Apollo.IsShiftKeyDown() then
-	--	BetterQuestLog:OnQuestTrackProgrammatically(wndHandler, wndControl)
-	--end
-	
+function BetterQuestLog:OnBottomLevelBtnCheck(wndHandler, wndControl) -- From Button or OnQuestObjectiveUpdated	
 	wndHandler:SetCheck(true)
 	
 	-- Text Coloring
@@ -906,7 +904,8 @@ function BetterQuestLog:HelperBuildObjectiveProgBar(queQuest, tObjective, wndObj
 end
 
 function BetterQuestLog:IsFilteringAsActive()
-	return self.wndMain:FindChild("LeftSideFilterBtnShowActive"):IsChecked()
+	--return self.wndMain:FindChild("LeftSideFilterBtnShowActive"):IsChecked()
+	return true
 end
 
 function BetterQuestLog:IsFilteringAsFinished()
@@ -964,8 +963,11 @@ local lastSelected = nil
 function BetterQuestLog:CheckTrackedToggle( wndHandler, wndControl, eMouseButton )
 	local wndTopBtn = wndHandler:GetParent():FindChild("TopLevelBtn")
 	
-	-- handle the tracking
-	if Apollo.IsShiftKeyDown() then
+	-- share the quest
+	if eMouseButton == 1 and Apollo.IsShiftKeyDown() then
+		Event_FireGenericEvent("GenericEvent_QuestLink", wndTopBtn:GetData())
+	elseif Apollo.IsShiftKeyDown() then
+		-- handle tracking
 		local queSelected = wndTopBtn:GetData()
 		local bNewTrackValue = not queSelected:IsTracked()
 		queSelected:SetTracked(bNewTrackValue)
