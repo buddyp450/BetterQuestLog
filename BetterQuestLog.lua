@@ -50,6 +50,19 @@ local ktConToUI =
 	{ "CRB_Basekit:kitFixedProgBar_9", "fffb00ff", Apollo.GetString("QuestLog_Impossible") }
 }
 
+local ktConToUINoAlpha =
+{
+	{ "CRB_Basekit:kitFixedProgBar_1", "9aaea3", Apollo.GetString("QuestLog_Trivial") },
+	{ "CRB_Basekit:kitFixedProgBar_2", "37ff00", Apollo.GetString("QuestLog_Easy") },
+	{ "CRB_Basekit:kitFixedProgBar_3", "46ffff", Apollo.GetString("QuestLog_Simple") },
+	{ "CRB_Basekit:kitFixedProgBar_4", "3052fc", Apollo.GetString("QuestLog_Standard") },
+	{ "CRB_Basekit:kitFixedProgBar_5", "ffffff", Apollo.GetString("QuestLog_Average") },
+	{ "CRB_Basekit:kitFixedProgBar_6", "ffd400", Apollo.GetString("QuestLog_Moderate") },
+	{ "CRB_Basekit:kitFixedProgBar_7", "ff6a00", Apollo.GetString("QuestLog_Tough") },
+	{ "CRB_Basekit:kitFixedProgBar_8", "ff0000", Apollo.GetString("QuestLog_Hard") },
+	{ "CRB_Basekit:kitFixedProgBar_9", "fb00ff", Apollo.GetString("QuestLog_Impossible") }
+}
+
 local ktValidCallButtonStats =
 {
 	[Quest.QuestState_Ignored] 		= true,
@@ -250,8 +263,11 @@ function BetterQuestLog:RedrawLeftTree()
 					local wndTop = self:FactoryProduce(self.wndMain:FindChild("LeftSideScroll"), "TopLevelItem", strQuestKey)
 					wndTop:FindChild("TopLevelBtn"):SetData(queQuest)
 					
-					--testing
-					wndTop:FindChild("TopLevelBtnText"):SetText(queQuest:GetTitle())
+					--if queQuest:IsTracked() then -- was attempting to set a unicode character here which isn't possible in LUA
+--						wndTop:FindChild("TopLevelBtnText"):SetText(queQuest:GetTitle().." ["..queQuest:GetConLevel().."] \u....")
+					--else
+						wndTop:FindChild("TopLevelBtnText"):SetText("["..queQuest:GetConLevel().."] "..queQuest:GetTitle())
+					--end
 					
 					-- todo change quest title color
 					local nDifficulty = queQuest:GetColoredDifficulty()
@@ -264,11 +280,56 @@ function BetterQuestLog:RedrawLeftTree()
 					--wndTop:FindChild("TopLevelProgBar"):SetMax(nMax)
 					--wndTop:FindChild("TopLevelProgBar"):SetProgress(nProgress)
 	
-					-- resize the button text if it's too long. WARNING: must be the same font that's used in the XML to work
-					if Apollo.GetTextWidth("CRB_InterfaceMedium", queQuest:GetTitle()) > wndTop:FindChild("TopLevelBtnText"):GetWidth() then
-						local nLeft, nTop, nRight, nBottom = wndTop:GetAnchorOffsets()
-						wndTop:SetAnchorOffsets(nLeft, nTop, nRight, nTop + (self.knBottomLevelHeight * 1.5)) -- our resize code that happens later will account for this
+					-- store the bottom level icon sprite and whether or not it has a call associated with it
+					local strBottomLevelIconSprite = ""
+					local bHasCall = queQuest:GetContactInfo()
+				
+					-- set the icon based on the enum state of the quest
+					local statusText = "" --TODO: localize
+					if eState == Quest.QuestState_Botched then
+						strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Metal_CircleX"
+						statusText = "(Botched)"
+					elseif eState == Quest.QuestState_Abandoned or eState == Quest.QuestState_Mentioned then
+						strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Metal_CircleExclamation"
+						statusText = "(Abandoned)"
+					elseif eState == Quest.QuestState_Achieved and bHasCall then
+						strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Metal_CircleCheckmarkAccent"
+						bHasCompletedQuest = true
+						statusText = "(Call)"
+					--elseif eState == Quest.QuestState_Achieved and not bHasCall then
+						--strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Metal_CircleCheckmark"
+						--bHasCompletedQuest = true
+						--statusText = "(Complete)"
+					elseif queQuest:IsTracked() then
+						--strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Holo_HazardProximity"
+						strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Holo_Checkmark"
+					else
+						statusText = ""
 					end
+					
+					if eState == Quest.QuestState_Achieved and not bHasCall then
+						bHasCompletedQuest = true
+						statusText = "(Complete)"
+					end
+	
+					-- resize the button text if it's too long. WARNING: must be the same font that's used in the XML to work
+					--if Apollo.GetTextWidth("CRB_InterfaceMedium", queQuest:GetTitle()) > wndTop:FindChild("TopLevelBtnText"):GetWidth() then
+					--	local nLeft, nTop, nRight, nBottom = wndTop:GetAnchorOffsets()
+					--	wndTop:SetAnchorOffsets(nLeft, nTop, nRight, nTop + (self.knTopLevelHeight * 1.5)) -- our resize code that happens later will account for this
+					--end
+					local spacer = "..."
+					local textWidth = Apollo.GetTextWidth("CRB_InterfaceMedium", queQuest:GetTitle())
+					local title = queQuest:GetTitle()
+					local totalText = title .. " " .. statusText
+					
+					--keep shortening until it fits, admittedly lazy and expensive approach to sizing
+					--TODO: refactor
+					while Apollo.GetTextWidth("CRB_InterfaceMedium", totalText) > wndTop:FindChild("TopLevelBtnText"):GetWidth() do
+						title = string.sub(title, 0, string.len(title)-1)
+						totalText = title .. spacer .. " " .. statusText
+					end
+					
+					wndTop:FindChild("TopLevelBtnText"):SetText(totalText)
 	
 					-- if the quest button is checked, change it's text color to indicate that it is selected
 					if wndTop:FindChild("TopLevelBtn"):IsChecked() then
@@ -277,25 +338,12 @@ function BetterQuestLog:RedrawLeftTree()
 						--wndTop:FindChild("TopLevelBtnText"):SetTextColor(kcrDeselectedColor)
 					end
 	
-					-- store the bottom level icon sprite and whether or not it has a call associated with it
-					local strBottomLevelIconSprite = ""
-					local bHasCall = queQuest:GetContactInfo()
-				
-					-- set the icon based on the enum state of the quest
-					if eState == Quest.QuestState_Botched then
-						strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Metal_CircleX"
-					elseif eState == Quest.QuestState_Abandoned or eState == Quest.QuestState_Mentioned then
-						strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Metal_CircleExclamation"
-					elseif eState == Quest.QuestState_Achieved and bHasCall then
-						strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Metal_CircleCheckmarkAccent"
-						bHasCompletedQuest = true
-					elseif eState == Quest.QuestState_Achieved and not bHasCall then
-						strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Metal_CircleCheckmark"
-						bHasCompletedQuest = true
-					elseif queQuest:IsTracked() then
-						strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Holo_HazardProximity"
-					end
+					
+					
 					wndTop:FindChild("TopLevelBtnIcon"):SetSprite(strBottomLevelIconSprite)
+					
+					
+					--wndTop:FindChild("TopLevelStatusText"):SetText(statusText)
 				
 					-- Set the appropriate sprite icon and tooltip for middle level
 					--if bFilteringFinished or bHasCompletedQuest then
@@ -625,15 +673,20 @@ end
 -- converted to use top button
 function BetterQuestLog:OnBottomLevelBtnCheck(wndHandler, wndControl) -- From Button or OnQuestObjectiveUpdated	
 	wndHandler:SetCheck(true)
+	local queQuest = wndHandler:GetData()
+	local nDifficulty = queQuest:GetColoredDifficulty()
+	local tConData = ktConToUINoAlpha[nDifficulty]
 	
 	-- Text Coloring
 	if self.wndLastBottomLevelBtnSelection and self.wndLastBottomLevelBtnSelection:IsValid() then
-		local queQuest = wndHandler:GetData()
-		local nDifficulty = queQuest:GetColoredDifficulty()
-		local tConData = ktConToUI[nDifficulty]
-		self.wndLastBottomLevelBtnSelection:FindChild("TopLevelBtnText"):SetTextColor(tConData[2])
+		self.wndLastBottomLevelBtnSelection:FindChild("TopLevelBtnText"):SetTextColor("FF"..tConData[2])
 	end
 	
+	--wndHandler:FindChild("TopLevelBtn"):SetBGColor(tConData[2])
+	--wndHandler:FindChild("TopLevelBtn"):SetSprite("ActionSetBuilder_TEMP:spr_TEMP_ActionSetBarFrame_Stretch")]
+	local myBg = wndHandler:GetParent():FindChild("BottomLevelQuestLinkBtn"):FindChild("ProgressBarBG")
+	myBg:SetBGColor(ApolloColor.new("80"..tConData[2]))
+	myBg:Show(true)
 	wndHandler:FindChild("TopLevelBtnText"):SetTextColor(kcrSelectedColor)
 	self.wndLastBottomLevelBtnSelection = wndHandler
 
@@ -644,22 +697,24 @@ function BetterQuestLog:OnBottomLevelBtnCheck(wndHandler, wndControl) -- From Bu
 	self:RedrawEverything()
 end
 
-function BetterQuestLog:OnBottomLevelBtnUncheck(wndHandler, wndControl)
-	wndHandler:FindChild("TopLevelBtn"):SetCheck(false)
-    local queQuest = wndHandler:FindChild("TopLevelBtn"):GetData()
-	local nDifficulty = queQuest:GetColoredDifficulty()
-	local tConData = ktConToUI[nDifficulty]
-	wndHandler:FindChild("TopLevelBtnText"):SetTextColor(tConData[2])
+--function BetterQuestLog:OnBottomLevelBtnUncheck(wndHandler, wndControl)
+--	wndHandler:FindChild("TopLevelBtn"):SetCheck(false)
+    --local queQuest = wndHandler:FindChild("TopLevelBtn"):GetData()
+	--local nDifficulty = queQuest:GetColoredDifficulty()
+	--local tConData = ktConToUI[nDifficulty]
+	--wndHandler:FindChild("TopLevelBtnText"):SetTextColor(tConData[2])
 	
 	-- Track this if the user was holding shift
 	--if Apollo.IsShiftKeyDown() then
 	--	BetterQuestLog:OnQuestTrackProgrammatically(wndHandler, wndControl)
 	---end
 	
-	self.wndMain:FindChild("QuestInfoControls"):Show(false)
-	self.wndMain:FindChild("RightSide"):Show(false)
-	self:RedrawEverything() -- Not Needed
-end
+	
+	
+	--self.wndMain:FindChild("QuestInfoControls"):Show(false)
+	--self.wndMain:FindChild("RightSide"):Show(false)
+	--self:RedrawEverything() -- Not Needed
+--end
 
 --function BetterQuestLog:OnBottomLevelBtnDown( wndHandler, wndControl, eMouseButton )
 --	if eMouseButton == 1 and Apollo.IsShiftKeyDown() then
@@ -963,7 +1018,6 @@ local lastSelected = nil
 function BetterQuestLog:CheckTrackedToggle( wndHandler, wndControl, eMouseButton )
 	local wndTopBtn = wndHandler:GetParent():FindChild("TopLevelBtn")
 	
-	-- share the quest
 	if eMouseButton == 1 and Apollo.IsShiftKeyDown() then
 		Event_FireGenericEvent("GenericEvent_QuestLink", wndTopBtn:GetData())
 	elseif Apollo.IsShiftKeyDown() then
@@ -977,6 +1031,8 @@ function BetterQuestLog:CheckTrackedToggle( wndHandler, wndControl, eMouseButton
 		-- if the button we selected is not checked, check it
 		if lastSelected ~= nil then
 			lastSelected:SetCheck(false)
+			local lastBg = lastSelected:GetParent():FindChild("BottomLevelQuestLinkBtn"):FindChild("ProgressBarBG")
+			lastBg:Show(false)
 		end
 		lastSelected = wndTopBtn
 		self:OnBottomLevelBtnCheck(wndTopBtn, wndTopBtn)
