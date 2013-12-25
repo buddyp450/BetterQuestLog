@@ -118,7 +118,7 @@ function BetterQuestLog:Initialize()
 	--self.wndMain:FindChild("EpisodeSummaryExpandBtn"):AttachWindow(self.wndMain:FindChild("EpisodeSummaryPopoutTextBG"))
 
 	-- Measure Windows
-	local wndMeasure = Apollo.LoadForm("BetterQuestLog.xml", "TopLevelItem", nil, self)
+	local wndMeasure = Apollo.LoadForm("BetterQuestLog.xml", "PreviousTopLevelItem", nil, self)
 	self.knTopLevelHeight = wndMeasure:GetHeight()
 	wndMeasure:Destroy()
 
@@ -181,22 +181,15 @@ function BetterQuestLog:DestroyAndRedraw() -- TODO, remove as much as possible t
 	self:RedrawLeftTree()
 
 	-- Show first in Quest Log
-	local wndTop = self.wndMain:FindChild("LeftSideScroll"):FindChild("TopLevelBtn") -- gets the first top level
-	local doShowQuestLog = false
-	if wndTop then
-		--wndTop:FindChild("TopLevelBtn"):SetCheck(true)
-		--self:RedrawLeftTree()
-		--local wndMiddle = wndTop:FindChild("TopLevelItems"):GetChildren()[1]
-		--if wndMiddle then
-	--		wndMiddle:FindChild("MiddleLevelBtn"):SetCheck(true)
-			--self:RedrawLeftTree()
-	--		local wndBot = wndMiddle:FindChild("MiddleLevelItems"):GetChildren()[1]
-	--		if wndBot then
-	--			wndBot:FindChild("BottomLevelBtn"):SetCheck(true)
-	--			self:OnBottomLevelBtnCheck(wndBot:FindChild("BottomLevelBtn"), wndBot:FindChild("BottomLevelBtn"))
-	--		end
-	--	end
-		self:CheckTrackedToggle(wndTop, wndTop, 0)
+	local wndCategory = self.wndMain:FindChild("LeftSideScroll"):GetChildren()[1]
+	if wndCategory then
+		wndCategory :FindChild("PreviousTopLevelBtn"):SetCheck(true)
+		self:RedrawLeftTree()
+		
+		local wndTop = wndCategory:FindChild("PreviousTopLevelItems"):GetChildren()[1]
+		if wndTop then
+			self:CheckTrackedToggle(wndTop, wndTop, 0)
+		end
 		doShowQuestLog = true
 	end
 
@@ -243,6 +236,12 @@ function BetterQuestLog:RedrawLeftTree()
 
 	local bFilteringFinished = self:IsFilteringAsFinished()
 	for key, qcCategory in pairs(QuestLog_GetKnownCategories()) do
+	
+		local strCategoryKey = "C"..qcCategory:GetId()
+		
+		local wndCategory = self:FactoryProduce(self.wndMain:FindChild("LeftSideScroll"), "PreviousTopLevelItem", strCategoryKey)
+		wndCategory:FindChild("PreviousTopLevelBtnText"):SetText(qcCategory:GetTitle())
+	
 		-- iterate through this categories "episodes"
 		for key, epiEpisode in pairs(qcCategory:GetEpisodes()) do
 			local nMax, nProgress = epiEpisode:GetProgress()
@@ -261,7 +260,8 @@ function BetterQuestLog:RedrawLeftTree()
 
 					--local strQuestKey = "C"..qcCategory:GetId().."E"..epiEpisode:GetId().."Q"..queQuest:GetId()
 					local strQuestKey = "Q"..queQuest:GetId()
-					local wndTop = self:FactoryProduce(self.wndMain:FindChild("LeftSideScroll"), "TopLevelItem", strQuestKey)
+					--local wndTop = self:FactoryProduce(self.wndMain:FindChild("PreviousTopLevelItems"), "TopLevelItem", strQuestKey)
+					local wndTop = self:FactoryProduce(wndCategory:FindChild("PreviousTopLevelItems"), "TopLevelItem", strQuestKey)
 					wndTop:FindChild("TopLevelBtn"):SetData(queQuest)
 					
 					-- todo change quest title color
@@ -352,47 +352,40 @@ function BetterQuestLog:RedrawLeftTree()
 				end
 			end -- done iterating through all the "episodes" in this category
 		end
+		
+		if #wndCategory:FindChild("PreviousTopLevelItems"):GetChildren() == 0 then -- Todo Refactor
+			wndCategory:Destroy()
+		end
 	end
 	self:ResizeTree()
 end
 
 function BetterQuestLog:ResizeTree()
-	if self.wndMain:FindChild("TopLevelItems") then
+	for key, wndCategory in pairs(self.wndMain:FindChild("LeftSideScroll"):GetChildren()) do
+		--if wndCategory:FindChild("PreviousTopLevelBtn"):IsChecked() then
+			for key, wndTop in pairs(self.wndMain:FindChild("PreviousTopLevelItems"):GetChildren()) do
+				local nItemHeights = wndTop:FindChild("TopLevelItems"):ArrangeChildrenVert(0)
+				local nLeft, nTop, nRight, nBottom = wndTop:GetAnchorOffsets()
+				wndTop:SetAnchorOffsets(nLeft, nTop, nRight, nTop + self.knBottomLevelHeight + nItemHeights) --note that top is small now
+						
+				local function SortByDifficulty(a, b)
+					return (b:FindChild("TopLevelBtn"):GetData():GetColoredDifficulty()) > (a:FindChild("TopLevelBtn"):GetData():GetColoredDifficulty())
+				end
+	
+				self.wndMain:FindChild("PreviousTopLevelItems"):ArrangeChildrenVert(0, SortByDifficulty)
+			end
+		--else
+		--	wndCategory:FindChild("PreviousTopLevelItems"):DestroyChildren()
+		--end
+		
+		wndCategory:FindChild("PreviousTopLevelItem"):SetSprite(wndCategory:FindChild("PreviousTopLevelBtn"):IsChecked() and "kitInnerFrame_MetalGold_FrameBright2" or "kitInnerFrame_MetalGold_FrameDull")
 
-		for key, wndTop in pairs(self.wndMain:FindChild("TopLevelItems"):GetChildren()) do
-			
+		local nItemHeights = wndCategory:FindChild("PreviousTopLevelItems"):ArrangeChildrenVert(0, function(a,b) return a:GetData() > b:GetData() end) -- Tasks to bottom
+		local nLeft, nTop, nRight, nBottom = wndCategory:GetAnchorOffsets()
+		wndCategory:SetAnchorOffsets(nLeft, nTop, nRight, nTop + self.knTopLevelHeight + nItemHeights)
+
 		
-			--if wndTop:FindChild("TopLevelBtn"):IsChecked() then
-			--	for key, wndMiddle in pairs(wndTop:FindChild("TopLevelItems"):GetChildren()) do
-			--		if not wndMiddle:FindChild("MiddleLevelBtn"):IsChecked() then
-			--			wndMiddle:FindChild("MiddleLevelItems"):DestroyChildren()
-			--		end
-			--
-			--		local nItemHeights = wndMiddle:FindChild("MiddleLevelItems"):ArrangeChildrenVert(0)
-			--		local nLeft, nTop, nRight, nBottom = wndMiddle:GetAnchorOffsets()
-			--		wndMiddle:SetAnchorOffsets(nLeft, nTop, nRight, nTop + self.knMiddleLevelHeight + nItemHeights)
-			--	end
-			--else
-			--	wndTop:FindChild("TopLevelItems"):DestroyChildren()
-			--end
-				
-			local nItemHeights = wndTop:FindChild("TopLevelItems"):ArrangeChildrenVert(0)
-			local nLeft, nTop, nRight, nBottom = wndTop:GetAnchorOffsets()
-			wndTop:SetAnchorOffsets(nLeft, nTop, nRight, nTop + self.knBottomLevelHeight + nItemHeights) --note that top is small now
-			
-			wndTop:FindChild("TopLevelItem"):SetSprite(wndTop:FindChild("TopLevelBtn"):IsChecked() and "kitInnerFrame_MetalGold_FrameBright2" or "kitInnerFrame_MetalGold_FrameDull")
-	
-			--local nItemHeights = wndTop:FindChild("TopLevelItems"):ArrangeChildrenVert(0, function(a,b) return a:GetData() > b:GetData() end) -- Tasks to bottom
-			--local nLeft, nTop, nRight, nBottom = wndTop:GetAnchorOffsets()
-			--wndTop:SetAnchorOffsets(nLeft, nTop, nRight, nTop + self.knTopLevelHeight + nItemHeights)
-		end
-		
-		-- Sorting by difficulty of the quest (stored in the TopLevelBtn)
-		local function SortByDifficulty(a, b)
-			return (b:FindChild("TopLevelBtn"):GetData():GetColoredDifficulty()) > (a:FindChild("TopLevelBtn"):GetData():GetColoredDifficulty())
-		end
-	
-		self.wndMain:FindChild("LeftSideScroll"):ArrangeChildrenVert(0, SortByDifficulty)
+		self.wndMain:FindChild("LeftSideScroll"):ArrangeChildrenVert(0)
 		self.wndMain:FindChild("LeftSideScroll"):RecalculateContentExtents()
 	end
 end
