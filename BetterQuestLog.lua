@@ -99,11 +99,12 @@ function BetterQuestLog:Initialize()
 		return
 	end
 
-	Apollo.RegisterEventHandler("EpisodeStateChanged", 			"DestroyAndRedraw", self) -- Not sure if this can be made stricter
+	--Apollo.RegisterEventHandler("EpisodeStateChanged", 			"DestroyAndRedraw", self) -- Not sure if this can be made stricter
+	Apollo.RegisterEventHandler("EpisodeStateChanged",			"RedrawEverything", self)
 	Apollo.RegisterEventHandler("QuestStateChanged", 			"OnQuestStateChanged", self) -- Routes to OnDestroyQuestObject if completed/botched
 	Apollo.RegisterEventHandler("QuestObjectiveUpdated", 		"OnQuestObjectiveUpdated", self)
 	Apollo.RegisterEventHandler("GenericEvent_ShowQuestLog", 	"OnGenericEvent_ShowQuestLog", self)
-	Apollo.RegisterTimerHandler("RedrawQuestLogInOneSec", 		"DestroyAndRedraw", self) -- TODO Remove if possible
+	--Apollo.RegisterTimerHandler("RedrawQuestLogInOneSec", 		"DestroyAndRedraw", self) -- TODO Remove if possible
 
     self.wndMain = Apollo.LoadForm("BetterQuestLog.xml", "BetterQuestLogForm", g_wndProgressLog:FindChild("ContentWnd_1"), self)
 
@@ -139,7 +140,8 @@ function BetterQuestLog:Initialize()
 	self.knMoreInfoHeight = self.wndMain:FindChild("QuestInfoMoreInfoFrame"):GetHeight()
 	self.knEpisodeInfoHeight = self.wndMain:FindChild("EpisodeInfo"):GetHeight()
 	
-	self:DestroyAndRedraw()
+	--self:DestroyAndRedraw()
+	self:RedrawEverything()
 end
 
 function BetterQuestLog:OnGenericEvent_ShowQuestLog(queTarget)
@@ -173,13 +175,14 @@ function BetterQuestLog:OnGenericEvent_ShowQuestLog(queTarget)
 		end
 end
 
-function BetterQuestLog:DestroyAndRedraw() -- TODO, remove as much as possible that calls this
-	if self.wndMain and self.wndMain:IsValid() then
-		self.wndMain:FindChild("LeftSideScroll"):DestroyChildren()
-		self.arLeftTreeMap = {}
-	end
+--function BetterQuestLog:DestroyAndRedraw() -- TODO, remove as much as possible that calls this
+--	doSomething()
+--	if self.wndMain and self.wndMain:IsValid() then
+	  --self.wndMain:FindChild("LeftSideScroll"):DestroyChildren()
+		--self.arLeftTreeMap = {}
+	--end
 
-	self:RedrawLeftTree()
+	--self:RedrawLeftTree()
 
 	-- Show first in Quest Log (on second thought, this is aggravating since top item could be just tradeskills)
 	--local wndCategory = self.wndMain:FindChild("LeftSideScroll"):GetChildren()[1]
@@ -194,9 +197,9 @@ function BetterQuestLog:DestroyAndRedraw() -- TODO, remove as much as possible t
 		--doShowQuestLog = true
 	--end
 
-	self:RedrawEverything()
-	self.wndMain:FindChild("RightSide"):Show(doShowQuestLog) --If nothing selected hide right side
-end
+	--self:RedrawEverything()
+	--self.wndMain:FindChild("RightSide"):Show(doShowQuestLog) --If nothing selected hide right side
+--end
 
 function BetterQuestLog:RedrawFromUI()
 	self:RedrawEverything()
@@ -207,8 +210,8 @@ function BetterQuestLog:RedrawEverything()
 
 	local bLeftSideHasResults = #self.wndMain:FindChild("LeftSideScroll"):GetChildren() ~= 0
 	self.wndMain:FindChild("LeftSideScroll"):SetText(bLeftSideHasResults and "" or Apollo.GetString("QuestLog_NoResults"))
-	self.wndMain:FindChild("QuestInfoControls"):Show(bLeftSideHasResults)
-	self.wndMain:FindChild("RightSide"):Show(bLeftSideHasResults)
+	--self.wndMain:FindChild("QuestInfoControls"):Show(bLeftSideHasResults) --moved to "DrawRightSide" function since it makes more sense there IMO
+	--self.wndMain:FindChild("RightSide"):Show(bLeftSideHasResults)
 
 	if self.wndMain:FindChild("RightSide"):IsShown() and self.wndMain:FindChild("RightSide"):GetData() then
 		self:DrawRightSide(self.wndMain:FindChild("RightSide"):GetData())
@@ -365,7 +368,18 @@ function BetterQuestLog:ResizeTree()
 		end
 		
 		local function SortByDifficulty(a, b)
-			return (b:FindChild("TopLevelBtn"):GetData():GetColoredDifficulty()) > (a:FindChild("TopLevelBtn"):GetData():GetColoredDifficulty())
+			local aData = a:FindChild("TopLevelBtn"):GetData()
+			local bData = b:FindChild("TopLevelBtn"):GetData()
+			--a:FindChild("TopLevelBtnText"):SetText(aData:GetColoredDifficulty() .. " < " .. bData:GetTitle())
+			--b:FindChild("TopLevelBtnText"):SetText(bData:GetColoredDifficulty() .. " > " .. aData:GetTitle())
+			
+			if aData:GetColoredDifficulty() ~= bData:GetColoredDifficulty() then
+				return bData:GetColoredDifficulty() > aData:GetColoredDifficulty()
+			else
+				return bData:GetTitle() > aData:GetTitle()
+			end
+			
+			--return (b:FindChild("TopLevelBtn"):GetData():GetColoredDifficulty()) > (a:FindChild("TopLevelBtn"):GetData():GetColoredDifficulty())
 		end
 		--wndCategory:FindChild("PreviousTopLevelItem"):SetSprite(wndCategory:FindChild("PreviousTopLevelBtn"):IsChecked() and "kitInnerFrame_MetalGold_FrameBright2" or "kitInnerFrame_MetalGold_FrameDull")
 
@@ -458,6 +472,9 @@ end
 
 function BetterQuestLog:DrawRightSide(queSelected)
 	local wndRight = self.wndMain:FindChild("RightSide")
+	
+	self.wndMain:FindChild("QuestInfoControls"):Show(true)
+	
 	local eQuestState = queSelected:GetState()
 
 	-- Text Summary
@@ -712,6 +729,7 @@ function BetterQuestLog:OnQuestTrackBtn(wndHandler, wndControl) -- QuestTrackBtn
 	self.wndMain:FindChild("QuestTrackBtn"):SetText(bNewTrackValue and Apollo.GetString("QuestLog_Untrack") or Apollo.GetString("QuestLog_Track")) 
 	self.wndMain:FindChild("QuestTrackBtn"):SetTooltip(bNewTrackValue and Apollo.GetString("QuestLog_RemoveFromTracker") or Apollo.GetString("QuestLog_AddToTracker"))
 	Event_FireGenericEvent("GenericEvent_QuestLog_TrackBtnClicked", queSelected)
+	self:RedrawEverything() --lazy, I just want checkmarks to be redrawn, potentially could be optimized/removed instead of redrawing everything
 end
 
 function BetterQuestLog:OnQuestShareBtn(wndHandler, wndControl) -- QuestShareBtn
@@ -734,11 +752,12 @@ function BetterQuestLog:OnQuestAbandonBtn(wndHandler, wndControl) -- QuestAbando
 	self.wndMain:FindChild("QuestInfoControls"):Show(false)
 end
 
+-- this button no longer exists in better quest log
 function BetterQuestLog:OnQuestHideBtn(wndHandler, wndControl) -- QuestInfoControlsHideBtn
 	local queSelected = self.wndMain:FindChild("RightSide"):GetData()
 	queSelected:ToggleIgnored()
 	self:OnDestroyQuestObject(queSelected)
-	self:DestroyAndRedraw()
+	--self:DestroyAndRedraw()
 	self.wndMain:FindChild("RightSide"):Show(false)
 	self.wndMain:FindChild("QuestInfoControls"):Show(false)
 	Apollo.CreateTimer("RedrawQuestLogInOneSec", 1, false) -- TODO TEMP HACK, since Quest:ToggleIgnored() takes a while
@@ -775,15 +794,22 @@ function BetterQuestLog:OnQuestStateChanged(queUpdated, eState)
 		return
 	end
 
+	local queCurrent = self.wndMain:FindChild("RightSide"):GetData()
+	
 	if eState == Quest.QuestState_Abandoned or eState == Quest.QuestState_Completed then
 		self:OnDestroyQuestObject(queUpdated)
+		self:RedrawEverything() --added this so when it's abandoned it will redraw properly
+		if queCurrent and queCurrent:GetId() == queUpdated:GetId() then
+			self.wndMain:FindChild("RightSide"):Show(false)
+			self.wndMain:FindChild("QuestInfoControls"):Show(false)
+		end
 	elseif eState == Quest.QuestState_Accepted or eState == Quest.QuestState_Achieved then
 		self:OnDestroyQuestObject(queUpdated)
-		self:DestroyAndRedraw()
+		
+		--self:DestroyAndRedraw()
+		self:RedrawEverything()
 	else -- Botched, Mentioned, Ignored, Unknown
 		self:RedrawEverything()
-
-		local queCurrent = self.wndMain:FindChild("RightSide"):GetData()
 		if queCurrent and queCurrent:GetId() == queUpdated:GetId() then
 			self.wndMain:FindChild("RightSide"):Show(false)
 			self.wndMain:FindChild("QuestInfoControls"):Show(false)
