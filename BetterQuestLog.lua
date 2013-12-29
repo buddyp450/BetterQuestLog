@@ -143,6 +143,7 @@ function BetterQuestLog:Initialize()
 end
 
 function BetterQuestLog:OnGenericEvent_ShowQuestLog(queTarget)
+	doSomething()
 	self.wndMain:FindChild("LeftSideFilterBtnShowActive"):SetCheck(true)
 	self.wndMain:FindChild("LeftSideFilterBtnShowHidden"):SetCheck(false)
 	self.wndMain:FindChild("LeftSideFilterBtnShowFinished"):SetCheck(false)	
@@ -180,18 +181,18 @@ function BetterQuestLog:DestroyAndRedraw() -- TODO, remove as much as possible t
 
 	self:RedrawLeftTree()
 
-	-- Show first in Quest Log
-	local wndCategory = self.wndMain:FindChild("LeftSideScroll"):GetChildren()[1]
-	if wndCategory then
-		wndCategory :FindChild("PreviousTopLevelBtn"):SetCheck(true)
-		self:RedrawLeftTree()
-		
-		local wndTop = wndCategory:FindChild("PreviousTopLevelItems"):GetChildren()[1]
-		if wndTop then
-			self:CheckTrackedToggle(wndTop, wndTop, 0)
-		end
-		doShowQuestLog = true
-	end
+	-- Show first in Quest Log (on second thought, this is aggravating since top item could be just tradeskills)
+	--local wndCategory = self.wndMain:FindChild("LeftSideScroll"):GetChildren()[1]
+	--if wndCategory then
+--		wndCategory :FindChild("PreviousTopLevelBtn"):SetCheck(true)
+		--self:RedrawLeftTree()
+--		
+		--local wndTop = wndCategory:FindChild("PreviousTopLevelItems"):GetChildren()[1]
+		--if wndTop then
+--			self:CheckTrackedToggle(wndTop, wndTop, 0)
+		--end
+		--doShowQuestLog = true
+	--end
 
 	self:RedrawEverything()
 	self.wndMain:FindChild("RightSide"):Show(doShowQuestLog) --If nothing selected hide right side
@@ -337,9 +338,6 @@ function BetterQuestLog:RedrawLeftTree()
 					
 					
 					wndTop:FindChild("TopLevelBtnIcon"):SetSprite(strBottomLevelIconSprite)
-					
-					
-					--wndTop:FindChild("TopLevelStatusText"):SetText(statusText)
 				
 					-- Set the appropriate sprite icon and tooltip for middle level
 					--if bFilteringFinished or bHasCompletedQuest then
@@ -362,25 +360,17 @@ end
 
 function BetterQuestLog:ResizeTree()
 	for key, wndCategory in pairs(self.wndMain:FindChild("LeftSideScroll"):GetChildren()) do
-		--if wndCategory:FindChild("PreviousTopLevelBtn"):IsChecked() then
-			for key, wndTop in pairs(self.wndMain:FindChild("PreviousTopLevelItems"):GetChildren()) do
-				local nItemHeights = wndTop:FindChild("TopLevelItems"):ArrangeChildrenVert(0)
-				local nLeft, nTop, nRight, nBottom = wndTop:GetAnchorOffsets()
-				wndTop:SetAnchorOffsets(nLeft, nTop, nRight, nTop + self.knBottomLevelHeight + nItemHeights) --note that top is small now
-						
-				local function SortByDifficulty(a, b)
-					return (b:FindChild("TopLevelBtn"):GetData():GetColoredDifficulty()) > (a:FindChild("TopLevelBtn"):GetData():GetColoredDifficulty())
-				end
-	
-				self.wndMain:FindChild("PreviousTopLevelItems"):ArrangeChildrenVert(0, SortByDifficulty)
-			end
-		--else
-		--	wndCategory:FindChild("PreviousTopLevelItems"):DestroyChildren()
-		--end
+		if not wndCategory:FindChild("PreviousTopLevelBtn"):IsChecked() then
+			wndCategory:FindChild("PreviousTopLevelItems"):DestroyChildren()
+		end
 		
-		wndCategory:FindChild("PreviousTopLevelItem"):SetSprite(wndCategory:FindChild("PreviousTopLevelBtn"):IsChecked() and "kitInnerFrame_MetalGold_FrameBright2" or "kitInnerFrame_MetalGold_FrameDull")
+		local function SortByDifficulty(a, b)
+			return (b:FindChild("TopLevelBtn"):GetData():GetColoredDifficulty()) > (a:FindChild("TopLevelBtn"):GetData():GetColoredDifficulty())
+		end
+		--wndCategory:FindChild("PreviousTopLevelItem"):SetSprite(wndCategory:FindChild("PreviousTopLevelBtn"):IsChecked() and "kitInnerFrame_MetalGold_FrameBright2" or "kitInnerFrame_MetalGold_FrameDull")
 
-		local nItemHeights = wndCategory:FindChild("PreviousTopLevelItems"):ArrangeChildrenVert(0, function(a,b) return a:GetData() > b:GetData() end) -- Tasks to bottom
+		--local nItemHeights = wndCategory:FindChild("PreviousTopLevelItems"):ArrangeChildrenVert(0, function(a,b) return a:GetData() > b:GetData() end) -- Tasks to bottom
+		local nItemHeights = wndCategory:FindChild("PreviousTopLevelItems"):ArrangeChildrenVert(0, SortByDifficulty)
 		local nLeft, nTop, nRight, nBottom = wndCategory:GetAnchorOffsets()
 		wndCategory:SetAnchorOffsets(nLeft, nTop, nRight, nTop + self.knTopLevelHeight + nItemHeights)
 
@@ -739,7 +729,7 @@ function BetterQuestLog:OnQuestAbandonBtn(wndHandler, wndControl) -- QuestAbando
 	local queSelected = self.wndMain:FindChild("RightSide"):GetData()
 	queSelected:Abandon()
 	self:OnDestroyQuestObject(queUpdated)
-	self:DestroyAndRedraw()
+	--self:DestroyAndRedraw()
 	self.wndMain:FindChild("RightSide"):Show(false)
 	self.wndMain:FindChild("QuestInfoControls"):Show(false)
 end
@@ -813,6 +803,7 @@ function BetterQuestLog:OnQuestObjectiveUpdated(queUpdated)
 	end
 end
 
+-- Abandons the quest provided in the parameter by quest id "Q..target:GetId()" and then destroys the object housing it and redraws everything
 function BetterQuestLog:OnDestroyQuestObject(queTarget) -- QuestStateChanged, QuestObjectiveUpdated
 	if self.wndMain and self.wndMain:IsValid() and queTarget then
 		local wndBot = self.wndMain:FindChild("LeftSideScroll"):FindChildByUserData("Q"..queTarget:GetId())
