@@ -10,6 +10,7 @@ require "Unit"
 require "Episode"
 
 local BetterQuestLog = {}
+local lastSelected = nil
 
 --[[ Quest States, For Reference:
 	QuestState_Unknown);
@@ -113,7 +114,8 @@ function BetterQuestLog:Initialize()
 	self.nQuestCountMax = QuestLog_GetMaxCount()
 
 	-- Default states
-	--self.wndMain:FindChild("LeftSideFilterBtnShowActive"):SetCheck(true)
+	self.wndMain:FindChild("LeftSideFilterBtnShowActive"):SetCheck(true)
+	self.wndMain:FindChild("ShowLevelCheckboxBtn"):SetCheck(false)
 	self.wndMain:FindChild("QuestAbandonPopoutBtn"):AttachWindow(self.wndMain:FindChild("QuestAbandonConfirm"))
 	self.wndMain:FindChild("QuestInfoMoreInfoToggleBtn"):AttachWindow(self.wndMain:FindChild("QuestInfoMoreInfoTextBG"))
 	--self.wndMain:FindChild("EpisodeSummaryExpandBtn"):AttachWindow(self.wndMain:FindChild("EpisodeSummaryPopoutTextBG"))
@@ -145,9 +147,9 @@ function BetterQuestLog:Initialize()
 end
 
 function BetterQuestLog:OnGenericEvent_ShowQuestLog(queTarget)
-	--self.wndMain:FindChild("LeftSideFilterBtnShowActive"):SetCheck(true)
-	--self.wndMain:FindChild("LeftSideFilterBtnShowHidden"):SetCheck(false)
-	--self.wndMain:FindChild("LeftSideFilterBtnShowFinished"):SetCheck(false)	
+	self.wndMain:FindChild("LeftSideFilterBtnShowActive"):SetCheck(true)
+	self.wndMain:FindChild("LeftSideFilterBtnShowHidden"):SetCheck(false)
+	self.wndMain:FindChild("LeftSideFilterBtnShowFinished"):SetCheck(false)	
 	self.wndMain:FindChild("LeftSideScroll"):DestroyChildren()
 	self:RedrawEverything()
 	
@@ -183,21 +185,19 @@ end
 
 function BetterQuestLog:DestroyAndRedraw() -- TODO, remove as much as possible that calls this
 	self.wndMain:FindChild("LeftSideScroll"):DestroyChildren()
-	self:RedrawEverything()
+	--self:RedrawEverything()
 
+	if self.wndMain and self.wndMain:IsValid() then
+		self.wndMain:FindChild("LeftSideScroll"):DestroyChildren()
+		self.arLeftTreeMap = {}
+	end
 
---	doSomething()
---	if self.wndMain and self.wndMain:IsValid() then
-	  --self.wndMain:FindChild("LeftSideScroll"):DestroyChildren()
-		--self.arLeftTreeMap = {}
-	--end
-
-	--self:RedrawLeftTree()
+	self:RedrawLeftTree()
 
 	-- Show first in Quest Log (on second thought, this is aggravating since top item could be just tradeskills)
 	--local wndCategory = self.wndMain:FindChild("LeftSideScroll"):GetChildren()[1]
 	--if wndCategory then
---		wndCategory :FindChild("PreviousTopLevelBtn"):SetCheck(true)
+		--wndCategory :FindChild("PreviousTopLevelBtn"):SetCheck(true)
 		--self:RedrawLeftTree()
 --		
 		--local wndTop = wndCategory:FindChild("PreviousTopLevelItems"):GetChildren()[1]
@@ -207,7 +207,7 @@ function BetterQuestLog:DestroyAndRedraw() -- TODO, remove as much as possible t
 		--doShowQuestLog = true
 	--end
 
-	--self:RedrawEverything()
+	self:RedrawEverything()
 	--self.wndMain:FindChild("RightSide"):Show(doShowQuestLog) --If nothing selected hide right side
 end
 
@@ -239,129 +239,23 @@ function BetterQuestLog:RedrawLeftTree()
 		strColor = "ffffb62e"
 	end
 	
-	--self reference doesn't work here when we have a button redrawing the tree? that doesn't seem right... why do I think that?
-	-- make sure I understand my own thoughts before moving forward here...
-	-- what exactly IS? a self reference in LUA?
-	
-	
 	local strActiveQuests = string.format("<T TextColor=\"%s\">%s</T>", strColor, nQuestCount)
 	strActiveQuests = String_GetWeaselString(Apollo.GetString("QuestLog_ActiveQuests"), strActiveQuests, self.nQuestCountMax)
 	self.wndMain:FindChild("QuestLogCountText"):SetAML(string.format("<P Font=\"CRB_InterfaceSmall_O\" Align=\"Center\" TextColor=\"ff2f94ac\">%s</P>", strActiveQuests))
-
+	
 	local bFilteringFinished = self:IsFilteringAsFinished()
 	for key, qcCategory in pairs(QuestLog_GetKnownCategories()) do
-	
 		local strCategoryKey = "C"..qcCategory:GetId()
-		
 		local wndCategory = self:FactoryProduce(self.wndMain:FindChild("LeftSideScroll"), "PreviousTopLevelItem", strCategoryKey)
 		wndCategory:FindChild("PreviousTopLevelBtnText"):SetText(qcCategory:GetTitle())
-	
 		-- iterate through this categories "episodes"
 		for key, epiEpisode in pairs(qcCategory:GetEpisodes()) do
 			local nMax, nProgress = epiEpisode:GetProgress()
 			-- store the status of whether or not we've completed this <?> quest (NOT SURE WHAT THIS IMPLIES YET)
 			local bHasCompletedQuest = false
-		
-			-- so as we're iterating through our categories, then episodes, we also want to 
-			-- get all quests for an "episode" by category id (wtf????)
 			for key, queQuest in pairs(epiEpisode:GetAllQuests(qcCategory:GetId())) do -- Note there's also GetVisible/GetTracked
-				local eState = queQuest:GetState()
-
-				-- only add this quest to our left tree if it matches a filter
-				if (self:IsFilteringAsActive() and eState ~= Quest.QuestState_Completed and not queQuest:IsIgnored())
-				or (self:IsFilteringAsFinished() and eState == Quest.QuestState_Completed)
-				or (self:IsFilteringAsHidden() and queQuest:IsIgnored()) then
-
-					--local strQuestKey = "C"..qcCategory:GetId().."E"..epiEpisode:GetId().."Q"..queQuest:GetId()
-					local strQuestKey = "Q"..queQuest:GetId()
-					--local wndTop = self:FactoryProduce(self.wndMain:FindChild("PreviousTopLevelItems"), "TopLevelItem", strQuestKey)
-					local wndTop = self:FactoryProduce(wndCategory:FindChild("PreviousTopLevelItems"), "TopLevelItem", strQuestKey)
-					wndTop:FindChild("TopLevelBtn"):SetData(queQuest)
-					
-					-- todo change quest title color
-					local nDifficulty = queQuest:GetColoredDifficulty()
-					local tConData = ktConToUI[nDifficulty]
-					wndTop:FindChild("TopLevelBtnText"):SetTextColor(tConData[2])
-
-					--todo sort quests by difficulty, hardest to easiest?
-									
-					-- FIXME: don't put the the same progress bar for each episode on every episode quest
-					--wndTop:FindChild("TopLevelProgBar"):SetMax(nMax)
-					--wndTop:FindChild("TopLevelProgBar"):SetProgress(nProgress)
-	
-					-- store the bottom level icon sprite and whether or not it has a call associated with it
-					local strBottomLevelIconSprite = ""
-					local bHasCall = queQuest:GetContactInfo()
-				
-					-- set the icon based on the enum state of the quest
-					local statusText = "" --TODO: localize
-					if eState == Quest.QuestState_Botched then
-						strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Metal_CircleX"
-						statusText = "(Botched)"
-					elseif eState == Quest.QuestState_Abandoned or eState == Quest.QuestState_Mentioned then
-						strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Metal_CircleExclamation"
-						statusText = "(Abandoned)"
-					elseif eState == Quest.QuestState_Achieved and bHasCall then
-						strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Metal_CircleCheckmarkAccent"
-						bHasCompletedQuest = true
-						statusText = "(Call)"
-					--elseif eState == Quest.QuestState_Achieved and not bHasCall then
-						--strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Metal_CircleCheckmark"
-						--bHasCompletedQuest = true
-						--statusText = "(Complete)"
-					elseif queQuest:IsTracked() then
-						--strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Holo_HazardProximity"
-						strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Holo_Checkmark"
-					else
-						statusText = ""
-					end
-					
-					if eState == Quest.QuestState_Achieved and not bHasCall then
-						bHasCompletedQuest = true
-						statusText = "(Complete)"
-					end
-	
-					-- resize the button text if it's too long. WARNING: must be the same font that's used in the XML to work
-					--if Apollo.GetTextWidth("CRB_InterfaceMedium", queQuest:GetTitle()) > wndTop:FindChild("TopLevelBtnText"):GetWidth() then
-					--	local nLeft, nTop, nRight, nBottom = wndTop:GetAnchorOffsets()
-					--	wndTop:SetAnchorOffsets(nLeft, nTop, nRight, nTop + (self.knTopLevelHeight * 1.5)) -- our resize code that happens later will account for this
-					--end
-					local spacer = "..."
-					local textWidth = Apollo.GetTextWidth("CRB_InterfaceMedium", queQuest:GetTitle())
-					local title = queQuest:GetTitle()
-					local queLvlText = "["..queQuest:GetConLevel().."]"
-					local totalText = queLvlText .. " " .. title .. " " .. statusText
-					
-					--keep shortening until it fits, admittedly lazy and expensive approach to sizing
-					--TODO: refactor
-					while Apollo.GetTextWidth("CRB_InterfaceMedium", totalText) > wndTop:FindChild("TopLevelBtnText"):GetWidth() do
-						title = string.sub(title, 0, string.len(title)-1)
-						totalText = queLvlText .. " " .. title .. spacer .. " " .. statusText
-					end
-					
-					wndTop:FindChild("TopLevelBtnText"):SetText(totalText)
-	
-					-- if the quest button is checked, change it's text color to indicate that it is selected
-					if wndTop:FindChild("TopLevelBtn"):IsChecked() then
-						wndTop:FindChild("TopLevelBtnText"):SetTextColor(kcrSelectedColor)
-					--else
-						--wndTop:FindChild("TopLevelBtnText"):SetTextColor(kcrDeselectedColor)
-					end
-	
-					
-					
-					wndTop:FindChild("TopLevelBtnIcon"):SetSprite(strBottomLevelIconSprite)
-				
-					-- Set the appropriate sprite icon and tooltip for middle level
-					--if bFilteringFinished or bHasCompletedQuest then
-					--	wndTop:FindChild("TopLevelIcon"):SetSprite("CRB_Basekit:kitIcon_Holo_Checkbox")
-					--	wndTop:FindChild("TopLevelIcon"):SetTooltip(bHasCompletedQuest and Apollo.GetString("QuestLog_CanTurnIn") or "")
-					--else
-					--	wndTop:FindChild("TopLevelIcon"):SetSprite("CRB_Basekit:kitIcon_Holo_Exclamation")
-					--	wndTop:FindChild("TopLevelIcon"):SetTooltip(Apollo.GetString("QuestLog_MoreQuestsToComplete"))
-					--end
-				end
-			end -- done iterating through all the "episodes" in this category
+				self:AddQuestToLog(wndCategory, queQuest)
+			end
 		end
 		
 		if #wndCategory:FindChild("PreviousTopLevelItems"):GetChildren() == 0 then -- Todo Refactor
@@ -369,6 +263,112 @@ function BetterQuestLog:RedrawLeftTree()
 		end
 	end
 	self:ResizeTree()
+end
+
+function BetterQuestLog:AddQuestToLog(wndCategory, queQuest)
+	local eState = queQuest:GetState()
+	-- only add this quest to our left tree if it matches a filter
+	if (self:IsFilteringAsActive() and eState ~= Quest.QuestState_Completed and not queQuest:IsIgnored())
+	or (self:IsFilteringAsFinished() and eState == Quest.QuestState_Completed)
+	or (self:IsFilteringAsHidden() and queQuest:IsIgnored()) then
+
+		--local strQuestKey = "C"..qcCategory:GetId().."E"..epiEpisode:GetId().."Q"..queQuest:GetId()
+		local strQuestKey = "Q"..queQuest:GetId()
+		--local wndTop = self:FactoryProduce(self.wndMain:FindChild("PreviousTopLevelItems"), "TopLevelItem", strQuestKey)
+		local wndTop = self:FactoryProduce(wndCategory:FindChild("PreviousTopLevelItems"), "TopLevelItem", strQuestKey)
+		wndTop:FindChild("TopLevelBtn"):SetData(queQuest)
+		
+		-- todo change quest title color
+		local nDifficulty = queQuest:GetColoredDifficulty()
+		local tConData = ktConToUI[nDifficulty]
+		wndTop:FindChild("TopLevelBtnText"):SetTextColor(tConData[2])
+
+		--todo sort quests by difficulty, hardest to easiest?
+						
+		-- FIXME: don't put the the same progress bar for each episode on every episode quest
+		--wndTop:FindChild("TopLevelProgBar"):SetMax(nMax)
+		--wndTop:FindChild("TopLevelProgBar"):SetProgress(nProgress)
+
+		-- store the bottom level icon sprite and whether or not it has a call associated with it
+		local strBottomLevelIconSprite = ""
+		local bHasCall = queQuest:GetContactInfo()
+	
+		-- set the icon based on the enum state of the quest
+		local statusText = "" --fixme: localize
+		if eState == Quest.QuestState_Botched then
+			strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Metal_CircleX"
+			statusText = "(Botched)"
+		elseif eState == Quest.QuestState_Abandoned or eState == Quest.QuestState_Mentioned then
+			strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Metal_CircleExclamation"
+			statusText = "(Abandoned)"
+		elseif eState == Quest.QuestState_Achieved and bHasCall then
+			strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Metal_CircleCheckmarkAccent"
+			bHasCompletedQuest = true
+			statusText = "(Call)"
+		elseif (eState == Quest.QuestState_Achieved or eState == Quest.QuestState_Completed)and not bHasCall then
+			--strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Metal_CircleCheckmark"
+			bHasCompletedQuest = true
+			statusText = "(Complete)"
+		elseif queQuest:IsTracked() then
+			--strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Holo_HazardProximity"
+			strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Holo_Checkmark"
+		else
+			statusText = ""
+		end
+
+		-- resize the button text if it's too long. WARNING: must be the same font that's used in the XML to work
+		--if Apollo.GetTextWidth("CRB_InterfaceMedium", queQuest:GetTitle()) > wndTop:FindChild("TopLevelBtnText"):GetWidth() then
+		--	local nLeft, nTop, nRight, nBottom = wndTop:GetAnchorOffsets()
+		--	wndTop:SetAnchorOffsets(nLeft, nTop, nRight, nTop + (self.knTopLevelHeight * 1.5)) -- our resize code that happens later will account for this
+		--end
+		local spacer = "..."
+		local textWidth = Apollo.GetTextWidth("CRB_InterfaceMedium", queQuest:GetTitle())
+		local title = queQuest:GetTitle()
+		local totalText = nil
+		local queLvlText = nil
+		
+		local wndShowLevelBtn = self.wndMain:FindChild("ShowLevelCheckboxBtn")
+		
+		if wndShowLevelBtn:IsChecked() then
+			queLvlText = "["..queQuest:GetConLevel().."]"
+			totalText = queLvlText .. " " .. title .. " " .. statusText
+		else
+			totalText = title .. " " .. statusText
+		end
+		
+		--keep shortening until it fits, admittedly lazy and expensive approach to sizing
+		--TODO: refactor
+		while Apollo.GetTextWidth("CRB_InterfaceMedium", totalText) > wndTop:FindChild("TopLevelBtnText"):GetWidth() do
+			title = string.sub(title, 0, string.len(title)-1)
+			if wndShowLevelBtn:IsChecked() then
+				totalText = queLvlText .. " " .. title .. spacer .. " " .. statusText
+			else
+				totalText = title .. " " .. statusText
+			end
+		end
+		
+		wndTop:FindChild("TopLevelBtnText"):SetText(totalText)
+
+		-- if the quest button is checked, change it's text color to indicate that it is selected
+		if wndTop:FindChild("TopLevelBtn"):IsChecked() then
+			wndTop:FindChild("TopLevelBtnText"):SetTextColor(kcrSelectedColor)
+		--else
+			--wndTop:FindChild("TopLevelBtnText"):SetTextColor(kcrDeselectedColor)
+		end
+
+		
+		
+		wndTop:FindChild("TopLevelBtnIcon"):SetSprite(strBottomLevelIconSprite)
+	
+		-- Set the appropriate sprite icon and tooltip for middle level
+		--if bFilteringFinished or bHasCompletedQuest then
+		--	wndTop:FindChild("TopLevelIcon"):SetSprite("CRB_Basekit:kitIcon_Holo_Checkbox")
+		--	wndTop:FindChild("TopLevelIcon"):SetTooltip(bHasCompletedQuest and Apollo.GetString("QuestLog_CanTurnIn") or "")
+		--else
+		--	wndTop:FindChild("TopLevelIcon"):SetSprite("CRB_Basekit:kitIcon_Holo_Exclamation")
+		--	wndTop:FindChild("TopLevelIcon"):SetTooltip(Apollo.GetString("QuestLog_MoreQuestsToComplete"))
+		--end
+	end
 end
 
 function BetterQuestLog:ResizeTree()
@@ -383,8 +383,8 @@ function BetterQuestLog:ResizeTree()
 			--a:FindChild("TopLevelBtnText"):SetText(aData:GetColoredDifficulty() .. " < " .. bData:GetTitle())
 			--b:FindChild("TopLevelBtnText"):SetText(bData:GetColoredDifficulty() .. " > " .. aData:GetTitle())
 			
-			if aData:GetColoredDifficulty() ~= bData:GetColoredDifficulty() then
-				return bData:GetColoredDifficulty() > aData:GetColoredDifficulty()
+			if aData:GetConLevel() ~= bData:GetConLevel() then
+				return bData:GetConLevel() > aData:GetConLevel()
 			else
 				return bData:GetTitle() > aData:GetTitle()
 			end
@@ -398,7 +398,6 @@ function BetterQuestLog:ResizeTree()
 		local nLeft, nTop, nRight, nBottom = wndCategory:GetAnchorOffsets()
 		wndCategory:SetAnchorOffsets(nLeft, nTop, nRight, nTop + self.knTopLevelHeight + nItemHeights)
 
-		
 		self.wndMain:FindChild("LeftSideScroll"):ArrangeChildrenVert(0)
 		self.wndMain:FindChild("LeftSideScroll"):RecalculateContentExtents()
 	end
@@ -982,18 +981,15 @@ function BetterQuestLog:HelperBuildObjectiveProgBar(queQuest, tObjective, wndObj
 end
 
 function BetterQuestLog:IsFilteringAsActive()
-	--return self.wndMain:FindChild("LeftSideFilterBtnShowActive"):IsChecked()
-	return true
+	return self.wndMain:FindChild("LeftSideFilterBtnShowActive"):IsChecked()
 end
 
 function BetterQuestLog:IsFilteringAsFinished()
-	return false -- commented out this filter
-	--return self.wndMain:FindChild("LeftSideFilterBtnShowFinished"):IsChecked()
+	return self.wndMain:FindChild("LeftSideFilterBtnShowFinished"):IsChecked()
 end
 
 function BetterQuestLog:IsFilteringAsHidden()
-	return false -- commented out this filter
-	--return self.wndMain:FindChild("LeftSideFilterBtnShowHidden"):IsChecked()
+	return self.wndMain:FindChild("LeftSideFilterBtnShowHidden"):IsChecked()
 end
 
 function BetterQuestLog:HelperPrereqFailed(tCurrItem)
@@ -1036,7 +1032,29 @@ end
 local BetterQuestLogInst = BetterQuestLog:new()
 BetterQuestLogInst:Init()
 
-local lastSelected = nil
+function BetterQuestLog:OnShowLevelChecked( wndHandler, wndControl, eMouseButton )
+	self.wndMain:FindChild("ShowLevelCheckboxBtn"):SetCheck(true)
+	self:RedrawLeftTree()
+end
+
+function BetterQuestLog:OnShowLevelUnchecked( wndHandler, wndControl, eMouseButton )
+	self.wndMain:FindChild("ShowLevelCheckboxBtn"):SetCheck(false)
+	self:RedrawLeftTree()
+end
+
+function BetterQuestLog:OnExpandChecked( wndHandler, wndControl, eMouseButton )
+	for key, wndCategory in pairs(self.wndMain:FindChild("LeftSideScroll"):GetChildren()) do
+		wndCategory:FindChild("PreviousTopLevelBtn"):SetCheck(true)
+	end	
+	self:RedrawLeftTree()
+end
+
+function BetterQuestLog:OnExpandUnchecked( wndHandler, wndControl, eMouseButton )
+	for key, wndCategory in pairs(self.wndMain:FindChild("LeftSideScroll"):GetChildren()) do
+		wndCategory:FindChild("PreviousTopLevelBtn"):SetCheck(false)
+	end
+	self:RedrawLeftTree()
+end
 
 function BetterQuestLog:CheckTrackedToggle( wndHandler, wndControl, eMouseButton )
 	local wndTopBtn = wndHandler:GetParent():FindChild("TopLevelBtn")
