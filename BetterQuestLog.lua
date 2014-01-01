@@ -104,7 +104,7 @@ function BetterQuestLog:Initialize()
 	Apollo.RegisterEventHandler("QuestStateChanged", 			"OnQuestStateChanged", self) -- Routes to OnDestroyQuestObject if completed/botched
 	Apollo.RegisterEventHandler("QuestObjectiveUpdated", 		"OnQuestObjectiveUpdated", self)
 	Apollo.RegisterEventHandler("GenericEvent_ShowQuestLog", 	"OnGenericEvent_ShowQuestLog", self)
-	--Apollo.RegisterTimerHandler("RedrawQuestLogInOneSec", 		"DestroyAndRedraw", self) -- TODO Remove if possible
+	Apollo.RegisterTimerHandler("RedrawQuestLogInOneSec", 		"DestroyAndRedraw", self) -- TODO Remove if possible
 
     self.wndMain = Apollo.LoadForm("BetterQuestLog.xml", "BetterQuestLogForm", g_wndProgressLog:FindChild("ContentWnd_1"), self)
 
@@ -145,37 +145,47 @@ function BetterQuestLog:Initialize()
 end
 
 function BetterQuestLog:OnGenericEvent_ShowQuestLog(queTarget)
-	doSomething()
-	self.wndMain:FindChild("LeftSideFilterBtnShowActive"):SetCheck(true)
-	self.wndMain:FindChild("LeftSideFilterBtnShowHidden"):SetCheck(false)
-	self.wndMain:FindChild("LeftSideFilterBtnShowFinished"):SetCheck(false)	
+	--self.wndMain:FindChild("LeftSideFilterBtnShowActive"):SetCheck(true)
+	--self.wndMain:FindChild("LeftSideFilterBtnShowHidden"):SetCheck(false)
+	--self.wndMain:FindChild("LeftSideFilterBtnShowFinished"):SetCheck(false)	
 	self.wndMain:FindChild("LeftSideScroll"):DestroyChildren()
 	self:RedrawEverything()
 	
 	local qcTop = queTarget:GetCategory()
-	local epiMid = queTarget:GetEpisode()
+	--local epiMid = queTarget:GetEpisode()
 	
 	local strCategoryKey = "C"..qcTop:GetId()
-	local wndTop = self.wndMain:FindChild("LeftSideScroll"):FindChildByUserData(strCategoryKey)
-	if wndTop then
-		wndTop:FindChild("TopLevelBtn"):SetCheck(true)
+	local wndCategory = self.wndMain:FindChild("LeftSideScroll"):FindChildByUserData(strCategoryKey)
+	if wndCategory then
+		wndCategory:FindChild("PreviousTopLevelBtn"):SetCheck(true)
 		self:RedrawLeftTree()
-		local strEpisodeKey = strCategoryKey.."E"..epiMid:GetId()
-		local wndMiddle = wndTop:FindChild("TopLevelItems"):FindChildByUserData(strEpisodeKey)
-		if wndMiddle then
-			wndMiddle:FindChild("MiddleLevelBtn"):SetCheck(true)
-			self:RedrawLeftTree()
-			local strQuestKey = strEpisodeKey.."Q"..queTarget:GetId()
-			local wndBot = wndMiddle:FindChild("MiddleLevelItems"):FindChildByUserData(strQuestKey)
-			if wndBot then
-				wndBot:FindChild("BottomLevelBtn"):SetCheck(true)
-				self:OnBottomLevelBtnCheck(wndBot:FindChild("BottomLevelBtn"), wndBot:FindChild("BottomLevelBtn"))
-			end
+		--local strEpisodeKey = strCategoryKey.."E"..epiMid:GetId()
+		--local wndMiddle = wndTop:FindChild("PreviousTopLevelItems"):FindChildByUserData(strEpisodeKey)
+		--if wndMiddle then
+		self:RedrawLeftTree()
+		--local strQuestKey = strEpisodeKey.."Q"..queTarget:GetId()
+		strQuestKey = "Q"..queTarget:GetId()
+		--local wndBot = wndMiddle:FindChild("MiddleLevelItems"):FindChildByUserData(strQuestKey)
+		wndQuest = wndCategory:FindChild("PreviousTopLevelItems"):FindChildByUserData(strQuestKey)
+		if wndQuest then
+		--if wndBot then
+			local wndTop = wndQuest:FindChild("TopLevelBtn")
+			self:CheckTrackedToggle(wndTop, wndTop)
+			--self:OnBottomLevelBtnCheck(wndBot:FindChild("BottomLevelBtn"), wndBot:FindChild("BottomLevelBtn"))
+		else
+			--quest didn't exist in the user's quest log so just show it in the right side
+			self:DrawRightSide(queTarget)
+			self:ResizeRight()
 		end
-		end
+		--end
+	end
 end
 
---function BetterQuestLog:DestroyAndRedraw() -- TODO, remove as much as possible that calls this
+function BetterQuestLog:DestroyAndRedraw() -- TODO, remove as much as possible that calls this
+	self.wndMain:FindChild("LeftSideScroll"):DestroyChildren()
+	self:RedrawEverything()
+
+
 --	doSomething()
 --	if self.wndMain and self.wndMain:IsValid() then
 	  --self.wndMain:FindChild("LeftSideScroll"):DestroyChildren()
@@ -199,7 +209,7 @@ end
 
 	--self:RedrawEverything()
 	--self.wndMain:FindChild("RightSide"):Show(doShowQuestLog) --If nothing selected hide right side
---end
+end
 
 function BetterQuestLog:RedrawFromUI()
 	self:RedrawEverything()
@@ -448,6 +458,12 @@ function BetterQuestLog:ResizeRight()
 	local nLeft, nTop, nRight, nBottom = self.wndMain:FindChild("QuestInfo"):GetAnchorOffsets()
 	self.wndMain:FindChild("QuestInfo"):SetAnchorOffsets(nLeft, nTop, nRight, nTop + self.wndMain:FindChild("QuestInfo"):ArrangeChildrenVert(0))
 
+	if self.wndMain:FindChild("RightSide"):GetData() == nil then
+		self.wndMain:FindChild("QuestInfoControls"):Show(false)
+	else
+		self.wndMain:FindChild("QuestInfoControls"):Show(true)
+	end
+	
 	self.wndMain:FindChild("RightSide"):ArrangeChildrenVert(0)
 	self.wndMain:FindChild("RightSide"):RecalculateContentExtents()
 end
@@ -473,7 +489,7 @@ end
 function BetterQuestLog:DrawRightSide(queSelected)
 	local wndRight = self.wndMain:FindChild("RightSide")
 	
-	self.wndMain:FindChild("QuestInfoControls"):Show(true)
+	--self.wndMain:FindChild("QuestInfoControls"):Show(true)
 	
 	local eQuestState = queSelected:GetState()
 
@@ -635,6 +651,7 @@ function BetterQuestLog:DrawRightSide(queSelected)
 	-- Bottom Buttons (outside of Scroll)
 	--self.wndMain:FindChild("QuestInfoControlsHideBtn"):Show(eQuestState == Quest.QuestState_Abandoned or eQuestState == Quest.QuestState_Mentioned) --commented out this btn
 	self.wndMain:FindChild("QuestInfoControlButtons"):Show(eQuestState == Quest.QuestState_Accepted or eQuestState == Quest.QuestState_Achieved or eQuestState == Quest.QuestState_Botched)
+	self.wndMain:FindChild("QuestInfoControlButtons"):SetText(eQuestState)
 	if eQuestState ~= Quest.QuestState_Abandoned then
 		local bCanShare = queSelected:CanShare()
 		local bIsTracked = queSelected:IsTracked()
