@@ -11,6 +11,7 @@ require "Episode"
 
 local BetterQuestLog = {}
 local lastSelected = nil
+local groupMembers = {}
 
 --[[ Quest States, For Reference:
 	QuestState_Unknown);
@@ -93,6 +94,79 @@ function BetterQuestLog:OnLoad()
 	Apollo.RegisterEventHandler("ShowQuestLog", "Initialize", self)
 	Apollo.RegisterEventHandler("Dialog_QuestShare", "OnDialog_QuestShare", self)
 	Apollo.RegisterTimerHandler("ShareTimeout", "OnShareTimeout", self)
+	
+	self.bqlChannel = ICCommLib.JoinChannel("BQLChannel", "OnBQLMessage", self)
+end
+
+-- tMsg = { strEventName, strPlayerName, strQuestId, eQuestState}
+function BetterQuestLog:OnBQLMessage(channel, tMsg)
+	-- if we're not in a group, don't pay attention to a broadcast
+	if type(tMsg.strEventName) ~= "string" or (GroupLib.InGroup() == false and GroupLib.InRaid() == false) then
+		return
+	end
+	
+	--check to make sure this message if from one of our groupies
+	local nGroupMemberCount = GroupLib.GetMemberCount()
+
+	local nCount = 0
+	local isGroupMemberMessage = false
+	if nGroupMemberCount > 1 then
+		for idx = 1, nGroupMemberCount do
+			local tMemberInfo = GroupLib.GetGroupMember(idx)
+			if tMemberInfo.characterName == tMsg.strPlayerName then
+				isGroupMemberMessage = true
+				break
+			end
+		end
+	end
+	
+	if not isGroupMemberMessage then
+		return
+	end
+
+	
+	--todo: check if the strPlayerName exists in our player table to begin with
+	--todo: if strPlayerName DNE, add it
+	
+	self.wndMain:FindChild("Debug2"):SetText("received: " .. tMsg.strEventName .. " " .. tMsg.strPlayerName .. " " .. tMsg.strQuestId .. " " .. tMsg.eQuestState)
+	if tMsg.strEventName == "QuestUpdated" then
+		if self.groupMembers[tMsg.strPlayerName] == nil then
+			self.wndMain:FindChild("Debug1"):SetText("creating group member: " .. tMsg.strPlayerName)
+			self.groupMembers[tMsg.strPlayerName] = {}
+			self.groupMembers[tMsg.strPlayerName].quests = {}
+			self.groupMembers[tMsg.strPlayerName].strPlayerName = tMsg.strPlayerName
+		end
+		self.groupMembers[tMsg.strPlayerName].quests[tMsg.strQuestId] = tMsg.eQuestState
+		--self.wndMain:FindChild("Debug1"):SetText(self.wndMain:FindChild("Debug1"):GetText() .. " and added queId: " .. tMsg.strQuestId .. " ".. groupMembers[tMsg.strPlayerName].quests[tMsg.strQuestId])
+		self:RedrawEverything()
+	elseif tMsg.strEventName == "PlayerLeft" then -- probably nil quest id and quest state, just need the leave event
+		if self.groupMembers[tMsg.strPlayerName] ~= nil then
+			self.groupMembers[tMsg.strPlayerName] = nil
+		end
+		self:RedrawEverything()
+	end
+end
+
+function BetterQuestLog:CountInstancesOfQuestId(queId)
+	local num = 0
+
+	for key, member in pairs(self.groupMembers) do
+		local eQuestState = member.quests[queId]
+		if queId == 5669 then
+			self.wndMain:FindChild("Debug2"):SetText("member: " .. member.strPlayerName .. " qId: " .. queId .. " member.quests: todo")
+		end
+		if eQuestState ~= nil then --this quest existed in the player's log
+			if eQuestState ~= Quest.QuestState_Ignored and eQuestState ~= Quest.QuestState_Abandoned then
+				num = num + 1
+			end
+		end
+	end
+	
+	if queId == 5669 then
+		--self.wndMain:FindChild("Debug1"):SetText("Found " .. num .. " instances of quest: " .. queId)
+		
+	end
+	return num
 end
 
 function BetterQuestLog:Initialize()
@@ -108,7 +182,7 @@ function BetterQuestLog:Initialize()
 	Apollo.RegisterTimerHandler("RedrawQuestLogInOneSec", 		"DestroyAndRedraw", self) -- TODO Remove if possible
 
     self.wndMain = Apollo.LoadForm("BetterQuestLog.xml", "BetterQuestLogForm", g_wndProgressLog:FindChild("ContentWnd_1"), self)
-
+	
 	-- Variables
 	self.wndLastBottomLevelBtnSelection = nil -- Just for button pressed state faking of text color
 	self.nQuestCountMax = QuestLog_GetMaxCount()
@@ -141,6 +215,8 @@ function BetterQuestLog:Initialize()
 	self.knRewardChoListHeight = self.wndMain:FindChild("QuestInfoRewardChoFrame"):GetHeight()
 	self.knMoreInfoHeight = self.wndMain:FindChild("QuestInfoMoreInfoFrame"):GetHeight()
 	self.knEpisodeInfoHeight = self.wndMain:FindChild("EpisodeInfo"):GetHeight()
+	
+	self.groupMembers = {}
 	
 	--self:DestroyAndRedraw()
 	self:RedrawEverything()
@@ -329,11 +405,22 @@ function BetterQuestLog:AddQuestToLog(wndCategory, queQuest)
 		
 		local wndShowLevelBtn = self.wndMain:FindChild("ShowLevelCheckboxBtn")
 		
+		local count = self:CountInstancesOfQuestId(queQuest:GetId())
+		
 		if wndShowLevelBtn:IsChecked() then
 			queLvlText = "["..queQuest:GetConLevel().."]"
-			totalText = queLvlText .. " " .. title .. " " .. statusText
+			
+			if count > 0 then
+				totalText = "(" .. count .. ") "..queLvlText .. " " .. title .. " " .. statusText
+			else
+				totalText = queLvlText .. " " ..  title .. " " .. statusText
+			end
 		else
-			totalText = title .. " " .. statusText
+			if count > 0 then
+				totalText = "(" .. count .. ") " .. title .. " " .. statusText
+			else
+				totalText = title .. " " .. statusText
+			end
 		end
 		
 		--keep shortening until it fits, admittedly lazy and expensive approach to sizing
@@ -341,9 +428,17 @@ function BetterQuestLog:AddQuestToLog(wndCategory, queQuest)
 		while Apollo.GetTextWidth("CRB_InterfaceMedium", totalText) > wndTop:FindChild("TopLevelBtnText"):GetWidth() do
 			title = string.sub(title, 0, string.len(title)-1)
 			if wndShowLevelBtn:IsChecked() then
-				totalText = queLvlText .. " " .. title .. spacer .. " " .. statusText
+				if count > 0 then
+					totalText = "(" .. count .. ") ".. queLvlText .. " " .. title .. spacer .. " " .. statusText
+				else
+					totalText = queLvlText .. " " .. title .. spacer .. " " .. statusText
+				end
 			else
-				totalText = title .. " " .. statusText
+				if count > 0 then
+					totalText = "(" .. count .. ") " .. title .. " " .. statusText
+				else
+					totalText = title .. " " .. statusText
+				end
 			end
 		end
 		
@@ -831,6 +926,19 @@ function BetterQuestLog:OnQuestStateChanged(queUpdated, eState)
 			self.wndMain:FindChild("QuestInfoControls"):Show(false)
 		end
 	end
+	
+	local msg = {}
+	msg.strPlayerName = GameLib.GetPlayerUnit():GetName()
+	msg.strEventName = "QuestUpdated"
+	msg.strQuestId = queUpdated:GetId()
+	msg.eQuestState = queUpdated:GetState()
+	
+	self.wndMain:FindChild("Debug"):SetText(msg.strPlayerName .. " " .. msg.strEventName .. " " .. msg.strQuestId .. " " .. msg.eQuestState)
+	
+	self.bqlChannel:SendMessage(msg)
+	
+	--debug, send message to ourselves
+	--self:OnBQLMessage(nil, msg)
 end
 
 function BetterQuestLog:OnQuestObjectiveUpdated(queUpdated)
@@ -843,6 +951,18 @@ function BetterQuestLog:OnQuestObjectiveUpdated(queUpdated)
 		self:OnDestroyQuestObject(queUpdated)
 		self:RedrawEverything()
 	end
+	
+	local msg = {}
+	msg.strPlayerName = GameLib.GetPlayerUnit():GetName()
+	msg.strEventName = "QuestUpdated"
+	msg.strQuestId = queUpdated:GetId()
+	msg.eQuestState = queUpdated:GetState()
+	
+	self.wndMain:FindChild("Debug"):SetText(msg.strPlayerName .. " " .. msg.strEventName .. " " .. msg.strQuestId .. " " .. msg.eQuestState)
+	self.bqlChannel:SendMessage(msg)
+	
+	--debug, send message to ourselves
+	--self:OnBQLMessage(nil, msg)
 end
 
 -- Abandons the quest provided in the parameter by quest id "Q..target:GetId()" and then destroys the object housing it and redraws everything
