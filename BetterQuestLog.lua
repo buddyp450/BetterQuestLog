@@ -4,14 +4,17 @@
 -----------------------------------------------------------------------------------------------
 
 require "Window"
+require "GameLib"
 require "Quest"
 require "QuestCategory"
 require "Unit"
 require "Episode"
+require "GroupLib"
 
 local BetterQuestLog = {}
 local lastSelected = nil
 local groupMembers = {}
+local bBroadcast = false
 
 --[[ Quest States, For Reference:
 	QuestState_Unknown);
@@ -91,20 +94,28 @@ local karEvalColors =
 }
 
 function BetterQuestLog:OnLoad()
-	Apollo.RegisterEventHandler("ShowQuestLog", "Initialize", self)
+	--Note that we always need this initialized in order to communicate quests when joining a group
+	--Apollo.RegisterEventHandler("Group_Join",		 "Initialize", self)
+	Apollo.RegisterEventHandler("ShowQuestLog", 	 "Initialize", self)
 	Apollo.RegisterEventHandler("Dialog_QuestShare", "OnDialog_QuestShare", self)
-	Apollo.RegisterTimerHandler("ShareTimeout", "OnShareTimeout", self)
+	Apollo.RegisterTimerHandler("ShareTimeout", 	 "OnShareTimeout", self)
 	
+	self.groupMembers = {}
 	self.bqlChannel = ICCommLib.JoinChannel("BQLChannel", "OnBQLMessage", self)
 end
 
 -- tMsg = { strEventName, strPlayerName, strQuestId, eQuestState}
-function BetterQuestLog:OnBQLMessage(channel, tMsg)
+function BetterQuestLog:OnBQLMessage(channel, tMsg)	
 	-- if we're not in a group, don't pay attention to a broadcast
 	if type(tMsg.strEventName) ~= "string" or (GroupLib.InGroup() == false and GroupLib.InRaid() == false) then
+		self.wndMain:FindChild("Debug1"):SetText("received: malformed bql message")
 		return
-	end
+	end		
 	
+	if self.wndMain and self.wndMain:IsValid() then
+		self.wndMain:FindChild("Debug1"):SetText("received: "..tMsg.strEventName.." from " .. tMsg.strPlayerName)
+	end
+			
 	--check to make sure this message if from one of our groupies
 	local nGroupMemberCount = GroupLib.GetMemberCount()
 
@@ -123,27 +134,26 @@ function BetterQuestLog:OnBQLMessage(channel, tMsg)
 	if not isGroupMemberMessage then
 		return
 	end
-
 	
 	--todo: check if the strPlayerName exists in our player table to begin with
 	--todo: if strPlayerName DNE, add it
 	
-	self.wndMain:FindChild("Debug2"):SetText("received: " .. tMsg.strEventName .. " " .. tMsg.strPlayerName .. " " .. tMsg.strQuestId .. " " .. tMsg.eQuestState)
 	if tMsg.strEventName == "QuestUpdated" then
 		if self.groupMembers[tMsg.strPlayerName] == nil then
-			self.wndMain:FindChild("Debug1"):SetText("creating group member: " .. tMsg.strPlayerName)
 			self.groupMembers[tMsg.strPlayerName] = {}
 			self.groupMembers[tMsg.strPlayerName].quests = {}
 			self.groupMembers[tMsg.strPlayerName].strPlayerName = tMsg.strPlayerName
 		end
 		self.groupMembers[tMsg.strPlayerName].quests[tMsg.strQuestId] = tMsg.eQuestState
-		--self.wndMain:FindChild("Debug1"):SetText(self.wndMain:FindChild("Debug1"):GetText() .. " and added queId: " .. tMsg.strQuestId .. " ".. groupMembers[tMsg.strPlayerName].quests[tMsg.strQuestId])
-		self:RedrawEverything()
-	elseif tMsg.strEventName == "PlayerLeft" then -- probably nil quest id and quest state, just need the leave event
-		if self.groupMembers[tMsg.strPlayerName] ~= nil then
-			self.groupMembers[tMsg.strPlayerName] = nil
+		
+		if self.wndMain and self.wndMain:IsValid() then
+			self:RedrawEverything()
 		end
-		self:RedrawEverything()
+	elseif tMsg.strEventName == "RequestBroadcast" then
+		self.bBroadcast = true
+		if self.wndMain and self.wndMain:IsValid() then
+			self:RedrawEverything()
+		end
 	end
 end
 
@@ -161,11 +171,6 @@ function BetterQuestLog:CountInstancesOfQuestId(queId)
 			end
 		end
 	end
-	
-	if queId == 5669 then
-		--self.wndMain:FindChild("Debug1"):SetText("Found " .. num .. " instances of quest: " .. queId)
-		
-	end
 	return num
 end
 
@@ -173,12 +178,24 @@ function BetterQuestLog:Initialize()
 	if (self.wndMain and self.wndMain:IsValid()) or not g_wndProgressLog then
 		return
 	end
+	
+	-- for if we logged in and we were already in a group, broadcast
+	if GroupLib.InGroup() or GroupLib.InRaid() then
+		self.bBroadcast = true
+	end
 
 	--Apollo.RegisterEventHandler("EpisodeStateChanged", 			"DestroyAndRedraw", self) -- Not sure if this can be made stricter
 	Apollo.RegisterEventHandler("EpisodeStateChanged",			"RedrawEverything", self)
 	Apollo.RegisterEventHandler("QuestStateChanged", 			"OnQuestStateChanged", self) -- Routes to OnDestroyQuestObject if completed/botched
 	Apollo.RegisterEventHandler("QuestObjectiveUpdated", 		"OnQuestObjectiveUpdated", self)
 	Apollo.RegisterEventHandler("GenericEvent_ShowQuestLog", 	"OnGenericEvent_ShowQuestLog", self)
+	
+--	Apollo.RemoveEventHandler("Group_Join",		 				"Initialize", self)
+	Apollo.RegisterEventHandler("Group_Join",					"OnGroupJoin", self) -- for broadcasting upon joining a group
+	
+	Apollo.RegisterEventHandler("Group_Remove",					"OnGroupRemove", self)				-- ( name, reason )
+	Apollo.RegisterEventHandler("Group_Left",					"OnGroupLeft", self)				-- ( reason )
+
 	Apollo.RegisterTimerHandler("RedrawQuestLogInOneSec", 		"DestroyAndRedraw", self) -- TODO Remove if possible
 
     self.wndMain = Apollo.LoadForm("BetterQuestLog.xml", "BetterQuestLogForm", g_wndProgressLog:FindChild("ContentWnd_1"), self)
@@ -216,14 +233,12 @@ function BetterQuestLog:Initialize()
 	self.knMoreInfoHeight = self.wndMain:FindChild("QuestInfoMoreInfoFrame"):GetHeight()
 	self.knEpisodeInfoHeight = self.wndMain:FindChild("EpisodeInfo"):GetHeight()
 	
-	self.groupMembers = {}
-	
 	--self:DestroyAndRedraw()
 	self:RedrawEverything()
 end
 
 function BetterQuestLog:OnGenericEvent_ShowQuestLog(queTarget)
-	self.wndMain:FindChild("LeftSideFilterBtnShowActive"):SetCheck(true)
+	self.wndMain:FindChild("LeftSideFilterBtnShowActive"):SetCheck(false)
 	self.wndMain:FindChild("LeftSideFilterBtnShowHidden"):SetCheck(false)
 	self.wndMain:FindChild("LeftSideFilterBtnShowFinished"):SetCheck(false)	
 	self.wndMain:FindChild("LeftSideScroll"):DestroyChildren()
@@ -247,6 +262,17 @@ function BetterQuestLog:OnGenericEvent_ShowQuestLog(queTarget)
 		wndQuest = wndCategory:FindChild("PreviousTopLevelItems"):FindChildByUserData(strQuestKey)
 		if wndQuest then
 		--if wndBot then
+			local queData = wndQuest:FindChild("TopLevelBtn"):GetData()
+			local eState = queData:GetState()
+			
+			-- select the appropriate filter for what we're looking at
+			if (eState == Quest.QuestState_Achieved or eState == Quest.QuestState_Completed) then
+				self.wndMain:FindChild("LeftSideFilterBtnShowFinished"):SetCheck(true)
+			elseif (eState == Quest.QuestState.Ignored) then
+				self.wndMain:FindChild("LeftSideFilterBtnShowHidden"):SetCheck(true)
+			else
+				self.wndMain:FindChild("LeftSideFilterBtnShowActive"):SetCheck(true)
+			end
 			local wndTop = wndQuest:FindChild("TopLevelBtn")
 			self:CheckTrackedToggle(wndTop, wndTop)
 			--self:OnBottomLevelBtnCheck(wndBot:FindChild("BottomLevelBtn"), wndBot:FindChild("BottomLevelBtn"))
@@ -315,6 +341,24 @@ function BetterQuestLog:RedrawLeftTree()
 		strColor = "ffffb62e"
 	end
 	
+	local oldFilter = nil
+	local filterShowActive = self.wndMain:FindChild("LeftSideFilterBtnShowActive")
+	local bChangedFilterForBroadcast = false
+	
+	if self.bBroadcast and not filterShowActive:IsChecked() then		
+		if self.wndMain:FindChild("LeftSideFilterBtnShowFinished"):IsChecked() then
+			filterShowActive:SetCheck(true)
+			oldFilter = "LeftSideFilterBtnShowFinished"
+			bChangedFilterForBroadcast = true
+		elseif self.wndMain:FindChild("LeftSideFilterBtnShowHidden"):IsChecked() then
+			filterShowActive:SetCheck(true)
+			oldFilter = "LeftSideFilterBtnShowHidden"
+			bChangedFilterForBroadcast = true
+		else
+			problemNoneWereChecked()
+		end
+	end
+	
 	local strActiveQuests = string.format("<T TextColor=\"%s\">%s</T>", strColor, nQuestCount)
 	strActiveQuests = String_GetWeaselString(Apollo.GetString("QuestLog_ActiveQuests"), strActiveQuests, self.nQuestCountMax)
 	self.wndMain:FindChild("QuestLogCountText"):SetAML(string.format("<P Font=\"CRB_InterfaceSmall_O\" Align=\"Center\" TextColor=\"ff2f94ac\">%s</P>", strActiveQuests))
@@ -331,18 +375,33 @@ function BetterQuestLog:RedrawLeftTree()
 			local bHasCompletedQuest = false
 			for key, queQuest in pairs(epiEpisode:GetAllQuests(qcCategory:GetId())) do -- Note there's also GetVisible/GetTracked
 				self:AddQuestToLog(wndCategory, queQuest)
-			end
+			end			
 		end
 		
 		if #wndCategory:FindChild("PreviousTopLevelItems"):GetChildren() == 0 then -- Todo Refactor
 			wndCategory:Destroy()
 		end
 	end
+	
+	-- only broadcast one set for each time this flag is tripped
+	if self.bBroadcast then
+		self.bBroadcast = false
+	end
+	
+	if bChangedFilterForBroadcast then
+		filterShowActive:SetCheck(false)
+		self.wndMain:FindChild("LeftSideFilterBtnShowActive"):SetText(oldFilter)
+		self.wndMain:FindChild(oldFilter):SetCheck(true)
+		self:RedrawEverything()
+		return
+	end
+	
 	self:ResizeTree()
 end
 
 function BetterQuestLog:AddQuestToLog(wndCategory, queQuest)
 	local eState = queQuest:GetState()
+	
 	-- only add this quest to our left tree if it matches a filter
 	if (self:IsFilteringAsActive() and eState ~= Quest.QuestState_Completed and not queQuest:IsIgnored())
 	or (self:IsFilteringAsFinished() and eState == Quest.QuestState_Completed)
@@ -353,6 +412,12 @@ function BetterQuestLog:AddQuestToLog(wndCategory, queQuest)
 		--local wndTop = self:FactoryProduce(self.wndMain:FindChild("PreviousTopLevelItems"), "TopLevelItem", strQuestKey)
 		local wndTop = self:FactoryProduce(wndCategory:FindChild("PreviousTopLevelItems"), "TopLevelItem", strQuestKey)
 		wndTop:FindChild("TopLevelBtn"):SetData(queQuest)
+
+		-- we always initialize this first using FilteringAsActive so we can broadcast this first sweep and it's effectively
+		-- our active quests "always".. (unless I change it and forget it, this way there be dragons fer learning)
+		if self.bBroadcast then --we use AddQuestToLog to add every quest to our scroll
+			self:BroadcastUpdate(queQuest)
+		end
 		
 		-- todo change quest title color
 		local nDifficulty = queQuest:GetColoredDifficulty()
@@ -372,24 +437,20 @@ function BetterQuestLog:AddQuestToLog(wndCategory, queQuest)
 		-- set the icon based on the enum state of the quest
 		local statusText = "" --fixme: localize
 		if eState == Quest.QuestState_Botched then
-			strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Metal_CircleX"
 			statusText = "(Botched)"
 		elseif eState == Quest.QuestState_Abandoned or eState == Quest.QuestState_Mentioned then
-			strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Metal_CircleExclamation"
 			statusText = "(Abandoned)"
 		elseif eState == Quest.QuestState_Achieved and bHasCall then
-			strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Metal_CircleCheckmarkAccent"
 			bHasCompletedQuest = true
 			statusText = "(Call)"
 		elseif (eState == Quest.QuestState_Achieved or eState == Quest.QuestState_Completed)and not bHasCall then
-			--strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Metal_CircleCheckmark"
 			bHasCompletedQuest = true
 			statusText = "(Complete)"
-		elseif queQuest:IsTracked() then
+		end	
+			
+		if queQuest:IsTracked() then
 			--strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Holo_HazardProximity"
 			strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Holo_Checkmark"
-		else
-			statusText = ""
 		end
 
 		-- resize the button text if it's too long. WARNING: must be the same font that's used in the XML to work
@@ -927,18 +988,55 @@ function BetterQuestLog:OnQuestStateChanged(queUpdated, eState)
 		end
 	end
 	
+	-- only broadcast updates if we're in a group
+	if GroupLib.InGroup() or GroupLib.InRaid() then
+		self:BroadcastUpdate(queUpdated)
+	end
+	
+	--debug, send message to ourselves
+	--self:OnBQLMessage(nil, msg)
+end
+
+function BetterQuestLog:BroadcastUpdate(queUpdated)
 	local msg = {}
 	msg.strPlayerName = GameLib.GetPlayerUnit():GetName()
 	msg.strEventName = "QuestUpdated"
 	msg.strQuestId = queUpdated:GetId()
 	msg.eQuestState = queUpdated:GetState()
 	
-	self.wndMain:FindChild("Debug"):SetText(msg.strPlayerName .. " " .. msg.strEventName .. " " .. msg.strQuestId .. " " .. msg.eQuestState)
+	self.wndMain:FindChild("Debug"):SetText("sent: ".. msg.strPlayerName .. " " .. msg.strEventName .. " " .. msg.strQuestId .. " " .. msg.eQuestState)
 	
 	self.bqlChannel:SendMessage(msg)
-	
-	--debug, send message to ourselves
-	--self:OnBQLMessage(nil, msg)
+end
+
+function BetterQuestLog:OnGroupLeft(reason) -- I left a group
+	self.groupMembers = {} --wipe out
+	self:RedrawEverything()
+end
+
+function BetterQuestLog:OnGroupRemove(name, reason) --a member in my group was removed
+	for key, member in pairs(self.groupMembers) do
+		if member.strPlayerName == name then
+			self.groupMembers[name] = nil
+			break
+		end
+	end
+	self:RedrawEverything()
+end
+
+function BetterQuestLog:OnGroupJoin()	
+	self.bBroadcast = true --flag myself to broadcast on redraw
+	-- request that my members broadcast so I can fill my quest log	
+	local nMembers = GroupLib.GetMemberCount()
+	if nMembers > 0 then
+		local msg = {}
+		msg.strEventName = "RequestBroadcast"
+		for i=1,nMembers do
+			msg.strPlayerName = GroupLib.GetGroupMember(i).characterName
+			self.bqlChannel:SendMessage(msg)
+		end
+	end
+	self:RedrawEverything() --redraw and broadcast
 end
 
 function BetterQuestLog:OnQuestObjectiveUpdated(queUpdated)
@@ -952,14 +1050,10 @@ function BetterQuestLog:OnQuestObjectiveUpdated(queUpdated)
 		self:RedrawEverything()
 	end
 	
-	local msg = {}
-	msg.strPlayerName = GameLib.GetPlayerUnit():GetName()
-	msg.strEventName = "QuestUpdated"
-	msg.strQuestId = queUpdated:GetId()
-	msg.eQuestState = queUpdated:GetState()
-	
-	self.wndMain:FindChild("Debug"):SetText(msg.strPlayerName .. " " .. msg.strEventName .. " " .. msg.strQuestId .. " " .. msg.eQuestState)
-	self.bqlChannel:SendMessage(msg)
+	-- only broadcast updates if we're in a group
+	if GroupLib.InGroup() or GroupLib.InRaid() then
+		self:BroadcastUpdate(queUpdated)
+	end
 	
 	--debug, send message to ourselves
 	--self:OnBQLMessage(nil, msg)
