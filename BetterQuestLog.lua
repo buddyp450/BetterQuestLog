@@ -114,7 +114,6 @@ function BetterQuestLog:OnLoad()
 	
 	self.isDebugMode = false
 	self.bqlChannel = ICCommLib.JoinChannel("BQLChannel", "OnBQLMessage", self)
-	Print(tostring(self.bqlChannel))
 	
 	self.nQuestCountMax = QuestLog_GetMaxCount() -- we need this here for... something, figure it out --FIXME
 	self:CreateActiveQuestsTable() -- not really happy with this atm
@@ -796,7 +795,7 @@ function BetterQuestLog:DrawRightSide(queSelected)
 	wndRight:FindChild("QuestInfoDescriptionText"):SetHeightToContentHeight()
 
 	-- Episode Summary
-	local epiParent = queSelected:GetEpisode()
+	local epiParent = queSelected:GetEpisode()	
 	local bIsTasks = epiParent:GetId() == 1
 	local nEpisodeMax, nEpisodeProgress = epiParent:GetProgress()
 	local strEpisodeDesc = ""
@@ -1153,9 +1152,9 @@ function BetterQuestLog:RequestGroupBroadcast()
 			msg.strPlayerName = GroupLib.GetGroupMember(i).characterName
 			--msg.strPlayerName = myName
 			if msg.strPlayerName ~= myName then -- don't request a broadcast from myself
-				Print(tostring(self.bqlChannel))
+				Print("is iccommlib: " .. tostring(ICCommLib.is(self.bqlChannel)))
 				local result = self.bqlChannel:SendMessage(msg)
-				Print(tostring(result))
+				Print("sent message: " .. tostring(result)) -- this result is false when it shouldn't be
 				
 				-- this works, but not here for some reason?
 				-- Apollo.GetAddon("BetterQuestLog").bqlChannel:SendMessage({strPlayerName="Kyla", strEventName="RequestBroadcast"})
@@ -1382,9 +1381,6 @@ end
 -- TopLevelItem Functions
 ---------------------------------------------------------------------------------------------------
 
-local BetterQuestLogInst = BetterQuestLog:new()
-BetterQuestLogInst:Init()
-
 function BetterQuestLog:OnShowLevelChecked( wndHandler, wndControl, eMouseButton )
 	self.wndMain:FindChild("ShowLevelCheckboxBtn"):SetCheck(true)
 	self:RedrawLeftTree()
@@ -1438,3 +1434,6 @@ function BetterQuestLog:CheckTrackedToggle( wndHandler, wndControl, eMouseButton
 	self:RedrawEverything()
 end
 
+
+local BetterQuestLogInst = BetterQuestLog:new()
+BetterQuestLogInst:Init()
