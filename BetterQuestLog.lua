@@ -301,7 +301,7 @@ function BetterQuestLog:CountInstancesOfQuestId(queId)
 	for key, member in pairs(self.groupMembers) do
 		local eQuestState = member.quests[queId]
 		if eQuestState ~= nil then --this quest existed in the player's log
-			if eQuestState ~= Quest.QuestState_Ignored and eQuestState ~= Quest.QuestState_Abandoned then
+			if eQuestState ~= Quest.QuestState_Ignored and eQuestState ~= Quest.QuestState_Abandoned and eQuestState ~= Quest.QuestState_Completed then
 				num = num + 1
 			end
 		end
@@ -521,7 +521,7 @@ function BetterQuestLog:AddQuestToLog(wndCategory, queQuest)
 	-- only add this quest to our left tree if it matches a filter
 	if (self:IsFilteringAsActive() and eState ~= Quest.QuestState_Completed and not queQuest:IsIgnored() and eState ~= Quest.QuestState_Abandoned)
 	or (self:IsFilteringAsFinished() and eState == Quest.QuestState_Completed)
-	or (self:IsFilteringAsHidden() and (queQuest:IsIgnored() or eState == Quest.QuestState_Abandoned) then
+	or (self:IsFilteringAsHidden() and (queQuest:IsIgnored() or eState == Quest.QuestState_Abandoned)) then
 		--local strQuestKey = "C"..qcCategory:GetId().."E"..epiEpisode:GetId().."Q"..queQuest:GetId() --old id format
 		local strQuestKey = "Q"..queQuest:GetId()
 		
