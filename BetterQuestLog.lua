@@ -102,15 +102,9 @@ function BetterQuestLog:OnLoad()
 	Apollo.RegisterEventHandler("Group_Join",		 "OnGroupJoin", self) -- for broadcasting upon joining a group
 	Apollo.RegisterEventHandler("Group_Remove",		 "OnGroupRemove", self)				-- ( name, reason )
 	Apollo.RegisterEventHandler("Group_Left",		 "OnGroupLeft", self)				-- ( reason )
-	
 	Apollo.RegisterTimerHandler("ShareTimeout", 	 	 "OnShareTimeout", self)
-	Apollo.RegisterTimerHandler("TestTimer",	     	 "OnTestTimer", self)
-	Apollo.RegisterEventHandler("TestEvent",		 "OnTest", self)
-	
-	Event_FireGenericEvent("TestEvent")
-	Apollo.CreateTimer("TestTimer", 0.7, false) -- create a 2 second timer for live updating
-	Apollo.StartTimer("TestTimer")
-	
+	Apollo.RegisterTimerHandler("OnLoadFinishedTimer",	 "BroadcastThenRequest", self)
+	Apollo.RegisterTimerHandler("ReRequestBroadcast", 	 "RequestGroupBroadcast", self)
 	
 	self.isDebugMode = false
 	self.bqlChannel = ICCommLib.JoinChannel("BQLChannel", "OnBQLMessage", self)
@@ -119,23 +113,26 @@ function BetterQuestLog:OnLoad()
 	self:CreateActiveQuestsTable() -- not really happy with this atm
 	self:ObtainGroupMembers()
 	
-	-- in the case of loading into a group, go ahead and broadcast before initializing
-	
-	if self.isDebugMode then
-		--self:BroadcastActiveQuests()
-		--self:RequestGroupBroadcast()
-	elseif GroupLib.InGroup() or GroupLib.InRaid() then
-		--self:BroadcastActiveQuests()
-		--self:RequestGroupBroadcast()
+	-- added a timer so that my broadcasting will work appropriately being called from OnLoad(thanks packetdancer!)
+	-- we needed to wait for onload to finish
+	Apollo.CreateTimer("OnLoadFinishedTimer", 3, false)
+	Apollo.StartTimer("OnLoadFinishedTimer")
+end
+
+function BetterQuestLog:BroadcastThenRequest()
+	Print("attempting to broadcast and request broadcast from group.. this should happen after OnLoad")
+	if GameLib.GetPlayerUnit() == nil or GameLib.GetPlayerUnit():GetName() == nil then
+		-- game isn't ready yet, start timer again
+		Print("GameLib.GetPlayer wasn't ready... waiting 3 seconds")
+		Apollo.CreateTimer("OnLoadFinishedTimer", 3, false)
+		Apollo.StartTimer("OnLoadFinishedtimer")
+	elseif self.isDebugMode or GroupLib.InGroup() or GroupLib.InRaid() then
+		Print("everything is GO... broadcasting and then requesting..")
+		self:BroadcastActiveQuests()
+		self:RequestGroupBroadcast()
+	else
+		Print("did nothing because i'm not in a group and debug is not on")
 	end
-end
-
-function BetterQuestLog:OnTestTimer()
-	self:RequestGroupBroadcast()
-end
-
-function BetterQuestLog:OnTest()
-	--doSomething()
 end
 
 function BetterQuestLog:CheckIfNeedsRedraw()
@@ -257,6 +254,7 @@ function BetterQuestLog:OnBQLMessage(channel, tMsg)
 	if tMsg.strEventName == "RequestBroadcast" and tMsg.strPlayerName == myName then
 		-- it was, share with the world my quest log
 		--this part confirmed working appropriately
+		Print("my quest log was requested... broadcasting")
 		self:BroadcastActiveQuests()
 	--if the message wasn't a request for broadcast it was a QuestUpdated from someone else..
 	--check that they're in my group and update if so
@@ -280,7 +278,7 @@ function BetterQuestLog:OnBQLMessage(channel, tMsg)
 		-- 2 seconds each time we got an update and then after the last one, the 2 sec would run out and it would
 		-- update
 		Apollo.StopTimer("RedrawFromUpdate")
-		Apollo.CreateTimer("RedrawFromUpdate", 0.7, false) -- create a 2 second timer for live updating
+		Apollo.CreateTimer("RedrawFromUpdate", 2, false) -- create a 2 second timer for live updating
 		Apollo.StartTimer("RedrawFromUpdate")
 		self.needsRedraw = true
 	else
@@ -521,9 +519,9 @@ function BetterQuestLog:AddQuestToLog(wndCategory, queQuest)
 	local eState = queQuest:GetState()
 	
 	-- only add this quest to our left tree if it matches a filter
-	if (self:IsFilteringAsActive() and eState ~= Quest.QuestState_Completed and not queQuest:IsIgnored())
+	if (self:IsFilteringAsActive() and eState ~= Quest.QuestState_Completed and not queQuest:IsIgnored() and eState ~= Quest.QuestState_Abandoned)
 	or (self:IsFilteringAsFinished() and eState == Quest.QuestState_Completed)
-	or (self:IsFilteringAsHidden() and queQuest:IsIgnored()) then	
+	or (self:IsFilteringAsHidden() and (queQuest:IsIgnored() or eState == Quest.QuestState_Abandoned) then
 		--local strQuestKey = "C"..qcCategory:GetId().."E"..epiEpisode:GetId().."Q"..queQuest:GetId() --old id format
 		local strQuestKey = "Q"..queQuest:GetId()
 		
@@ -1074,7 +1072,6 @@ function BetterQuestLog:OnQuestStateChanged(queUpdated, eState)
 		end
 	elseif eState == Quest.QuestState_Accepted or eState == Quest.QuestState_Achieved then
 		self:OnDestroyQuestObject(queUpdated)
-		
 		--self:DestroyAndRedraw()
 		self:RedrawEverything()
 	else -- Botched, Mentioned, Ignored, Unknown
@@ -1126,6 +1123,7 @@ function BetterQuestLog:BroadcastUpdate(queUpdated)
 end
 
 function BetterQuestLog:OnGroupLeft(reason) -- I left a group
+	Print("I am no longer in a group, wiped out groupMembers table..")
 	self.groupMembers = {} --wipe out
 	self:RedrawEverything()
 end
@@ -1133,6 +1131,7 @@ end
 function BetterQuestLog:OnGroupRemove(name, reason) --a member in my group was removed
 	for key, member in pairs(self.groupMembers) do
 		if member.strPlayerName == name then
+			Print("player " .. name .. " was removed from group, removing from table")
 			self.groupMembers[name] = nil
 			break
 		end
@@ -1152,9 +1151,18 @@ function BetterQuestLog:RequestGroupBroadcast()
 			msg.strPlayerName = GroupLib.GetGroupMember(i).characterName
 			--msg.strPlayerName = myName
 			if msg.strPlayerName ~= myName then -- don't request a broadcast from myself
-				Print("is iccommlib: " .. tostring(ICCommLib.is(self.bqlChannel)))
 				local result = self.bqlChannel:SendMessage(msg)
-				Print("sent message: " .. tostring(result)) -- this result is false when it shouldn't be
+				
+				Print("sent request: " .. tostring(result))
+				-- workaround for not being able to tell when i'm ready to send a message
+				if result == false then
+					Apollo.CreateTimer("ReRequestBroadcast", 1, false)
+					Print("..trying again")
+					Apollo.StartTimer("ReRequestBroadcast")
+					break
+				else
+					Print("request sent!")
+				end
 				
 				-- this works, but not here for some reason?
 				-- Apollo.GetAddon("BetterQuestLog").bqlChannel:SendMessage({strPlayerName="Kyla", strEventName="RequestBroadcast"})
@@ -1176,24 +1184,26 @@ function BetterQuestLog:RequestGroupBroadcast()
 end
 
 function BetterQuestLog:OnGroupJoin()	
-	self:BroadcastActiveQuests() -- I joined a group, broadcast my active quests
-	self:RequestGroupBroadcast() -- Request an update from the members of my group
+	Apollo.CreateTimer("OnLoadFinishedTimer", 3, false)
+	Apollo.StartTimer("OnLoadFinishedTimer")
+	--self:BroadcastActiveQuests() -- I joined a group, broadcast my active quests
+	--self:RequestGroupBroadcast() -- Request an update from the members of my group
 end
 
 function BetterQuestLog:OnQuestObjectiveUpdated(queUpdated)
 	local queCurrent = self.wndMain:FindChild("RightSide"):GetData()
 	if queCurrent and queCurrent:GetId() == queUpdated:GetId() then
-		self:RedrawEverything()
+		self:RedrawEverything() --redraw if we're looking at the quest that just updated
 	end
 
-	if queCurrent and queCurrent:GetState() == Quest.QuestState_Achieved then -- For some reason OnQuestStateChanged doesn't get called
-		self:OnDestroyQuestObject(queUpdated)
-		self:RedrawEverything()
-	end
-	
 	-- only broadcast updates if we're in a group
 	if GroupLib.InGroup() or GroupLib.InRaid() then
 		self:BroadcastUpdate(queUpdated)
+	end
+	
+	if queCurrent and queCurrent:GetState() == Quest.QuestState_Achieved then
+		self:OnDestroyQuestObject(queUpdated)
+		self:RedrawEverything()
 	end
 end
 
