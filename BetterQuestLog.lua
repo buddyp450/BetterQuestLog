@@ -103,15 +103,13 @@ function BetterQuestLog:OnLoad()
 	Apollo.RegisterEventHandler("Group_Remove",		 "OnGroupRemove", self)				-- ( name, reason )
 	Apollo.RegisterEventHandler("Group_Left",		 "OnGroupLeft", self)				-- ( reason )
 	Apollo.RegisterTimerHandler("ShareTimeout", 	 	 "OnShareTimeout", self)
-	Apollo.RegisterTimerHandler("OnLoadFinishedTimer",	 "BroadcastThenRequest", self)
+	Apollo.RegisterTimerHandler("OnLoadFinishedTimer",	 "BetterQuestLogLoaded", self)
 	Apollo.RegisterTimerHandler("ReRequestBroadcast", 	 "RequestGroupBroadcast", self)
 	
 	self.isDebugMode = false
 	self.bqlChannel = ICCommLib.JoinChannel("BQLChannel", "OnBQLMessage", self)
 	
 	self.nQuestCountMax = QuestLog_GetMaxCount() -- we need this here for... something, figure it out --FIXME
-	self:CreateActiveQuestsTable() -- not really happy with this atm
-	self:ObtainGroupMembers()
 	
 	-- added a timer so that my broadcasting will work appropriately being called from OnLoad(thanks packetdancer!)
 	-- we needed to wait for onload to finish
@@ -119,19 +117,22 @@ function BetterQuestLog:OnLoad()
 	Apollo.StartTimer("OnLoadFinishedTimer")
 end
 
-function BetterQuestLog:BroadcastThenRequest()
-	Print("attempting to broadcast and request broadcast from group.. this should happen after OnLoad")
+function BetterQuestLog:BetterQuestLogLoaded()
 	if GameLib.GetPlayerUnit() == nil or GameLib.GetPlayerUnit():GetName() == nil then
-		-- game isn't ready yet, start timer again
 		Print("GameLib.GetPlayer wasn't ready... waiting 3 seconds")
 		Apollo.CreateTimer("OnLoadFinishedTimer", 3, false)
 		Apollo.StartTimer("OnLoadFinishedtimer")
-	elseif self.isDebugMode or GroupLib.InGroup() or GroupLib.InRaid() then
-		Print("everything is GO... broadcasting and then requesting..")
-		self:BroadcastActiveQuests()
-		self:RequestGroupBroadcast()
 	else
-		Print("did nothing because i'm not in a group and debug is not on")
+		Print("better quest log loaded")
+		self:CreateActiveQuestsTable() -- not really happy with this atm
+		self:ObtainGroupMembers()
+		if self.isDebugMode or GroupLib.InGroup() or GroupLib.InRaid() then
+			Print("detected I was already in a group")
+			self:BroadcastActiveQuests()
+			self:RequestGroupBroadcast()
+		else
+			Print("did nothing because i'm not in a group and debug is not on")
+		end
 	end
 end
 
@@ -175,16 +176,13 @@ end
 function BetterQuestLog:CreateActiveQuestsTable()
 	-- here we simply iterate through every quest in the game <maybe?> and check if it's completed, horrible right? I'm not even
 	-- sure that's what happens exactly..
-	
+	Print("creating active quests table")
 	self.activeQuests = {} -- make sure nothing old is in here for when we repopulate it
 	for key, qcCategory in pairs(QuestLog_GetKnownCategories()) do
 		for key, epiEpisode in pairs(qcCategory:GetEpisodes()) do
-			for key, queQuest in pairs(epiEpisode:GetAllQuests(qcCategory:GetId())) do -- Note there's also GetVisible/GetTracked
-				-- quests that are not active: abandoned, achieved, completed, botched, ignored
-				local eState = queQuest:GetState()
-				--inspect Apollo.GetAddon("BetterQuestLog").activeQuests["Wigwalli Treasure"]:GetState()
-				
-				if eState ~= Quest.QuestState_Completed then
+			for key, queQuest in pairs(epiEpisode:GetAllQuests(qcCategory:GetId())) do
+				local eState = queQuest:GetState()	
+				if eState ~= Quest.QuestState_Completed and eState ~= Quest.QuestState_Abandoned and eState ~= Quest.QuestState_Ignored and eState ~= Quest.QuestState_Botched then
 					self.activeQuests[queQuest:GetTitle()] = queQuest
 				end
 			end
@@ -259,13 +257,7 @@ function BetterQuestLog:OnBQLMessage(channel, tMsg)
 	--if the message wasn't a request for broadcast it was a QuestUpdated from someone else..
 	--check that they're in my group and update if so
 	elseif tMsg.strEventName == "QuestUpdated" and self:IsGroupMemberMessage(tMsg) then 
-		-- check if the player existed in our table already
-		if self.groupMembers[tMsg.strPlayerName] == nil then
-			-- if they didn't, create them
-			self.groupMembers[tMsg.strPlayerName] = {}
-			self.groupMembers[tMsg.strPlayerName].quests = {}
-			self.groupMembers[tMsg.strPlayerName].strPlayerName = tMsg.strPlayerName
-		end
+		self:AddGroupMember(tMsg.strPlayerName) -- won't add if it already exists
 		
 		-- store the information we received in our table (overwriting any previous)
 		self.groupMembers[tMsg.strPlayerName].quests[tMsg.strQuestId] = tMsg.eQuestState
@@ -500,9 +492,6 @@ function BetterQuestLog:RedrawLeftTree()
 			local nMax, nProgress = epiEpisode:GetProgress()
 			-- store the status of whether or not we've completed this <?> quest (NOT SURE WHAT THIS IMPLIES YET)
 			local bHasCompletedQuest = false
-			if self:IsFilteringAsActive() then
-				activeQuests = {} --clear this to be repopulated
-			end
 			for key, queQuest in pairs(epiEpisode:GetAllQuests(qcCategory:GetId())) do -- Note there's also GetVisible/GetTracked
 				self:AddQuestToLog(wndCategory, queQuest)
 			end			
@@ -1091,6 +1080,7 @@ function BetterQuestLog:OnQuestStateChanged(queUpdated, eState)
 end
 
 function BetterQuestLog:BroadcastActiveQuests()
+	Print("broadcasting my active quests")
 	for key, quest in pairs(self.activeQuests) do
 		self:BroadcastUpdate(quest)
 	end
@@ -1115,6 +1105,7 @@ function BetterQuestLog:BroadcastUpdate(queUpdated)
 	end
 	
 	self.bqlSent[self.sentCount] = msg
+	self.bqlSent[self.sentCount].questName = queUpdated:GetTitle()
 	self.sentCount = self.sentCount + 1
 	
 	if self.isDebugMode then
@@ -1152,20 +1143,14 @@ function BetterQuestLog:RequestGroupBroadcast()
 			--msg.strPlayerName = myName
 			if msg.strPlayerName ~= myName then -- don't request a broadcast from myself
 				local result = self.bqlChannel:SendMessage(msg)
-				
-				Print("sent request: " .. tostring(result))
 				-- workaround for not being able to tell when i'm ready to send a message
 				if result == false then
 					Apollo.CreateTimer("ReRequestBroadcast", 1, false)
-					Print("..trying again")
 					Apollo.StartTimer("ReRequestBroadcast")
 					break
 				else
-					Print("request sent!")
+					Print("requested broadcast from: " .. msg.strPlayerName)
 				end
-				
-				-- this works, but not here for some reason?
-				-- Apollo.GetAddon("BetterQuestLog").bqlChannel:SendMessage({strPlayerName="Kyla", strEventName="RequestBroadcast"})
 				
 				if self.sentCount == nil then
 					self.sentCount = 0
