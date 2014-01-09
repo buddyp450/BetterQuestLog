@@ -190,6 +190,24 @@ function BetterQuestLog:CreateActiveQuestsTable()
 	end
 end
 
+function BetterQuestLog:UpdateActiveQuestTable(queTarget)
+	local qTitle = queTarget:GetTitle()
+	Print("Updating active quest table with.. " .. qTitle)
+	if self.activeQuests[qTitle] ~= nil then
+		local eState = queTarget:GetState()
+		if eState ~= Quest.QuestState_Completed and eState ~= Quest.QuestState_Abandoned and eState ~= Quest.QuestState_Ignored and eState ~= Quest.QuestState_Botched then
+			-- we consider this "active" for our purposes
+			self.activeQuests[qTitle] = queTarget
+		else
+			-- otherwise remove it from this table
+			self.activeQuests[qTitle] = nil
+		end
+	elseif eState ~= Quest.QuestState_Completed and eState ~= Quest.QuestState_Abandoned and eState ~= Quest.QuestState_Ignored and eState ~= Quest.QuestState_Botched then
+		-- just handle the add since this key was nil
+		self.activeQuests[qTitle] = queTarget
+	end
+end
+
 -- determines if the bql message was from one of my group members
 function BetterQuestLog:IsGroupMemberMessage(tMsg)
 	if self.isDebugMode then
@@ -290,6 +308,9 @@ end
 -- counts the # of instances of a quest id in our groupMembers table
 function BetterQuestLog:CountInstancesOfQuestId(queId)
 	local num = 0
+	if self.groupMembers == nil then
+		return 0
+	end	
 	for key, member in pairs(self.groupMembers) do
 		local eQuestState = member.quests[queId]
 		if eQuestState ~= nil then --this quest existed in the player's log
@@ -299,6 +320,10 @@ function BetterQuestLog:CountInstancesOfQuestId(queId)
 		end
 	end
 	return num
+end
+
+function BetterQuestLog:OnQuestInit()
+	Print("on quest init")
 end
 
 function BetterQuestLog:Initialize()
@@ -446,6 +471,7 @@ function BetterQuestLog:RedrawFromUI()
 end
 
 function BetterQuestLog:RedrawEverything()
+	Print("called redraw everything")
 	if not self.wndMain or not self.wndMain:IsValid() then
 		return
 	end
@@ -888,7 +914,6 @@ function BetterQuestLog:DrawRightSide(queSelected)
 	-- Bottom Buttons (outside of Scroll)
 	--self.wndMain:FindChild("QuestInfoControlsHideBtn"):Show(eQuestState == Quest.QuestState_Abandoned or eQuestState == Quest.QuestState_Mentioned) --commented out this btn
 	self.wndMain:FindChild("QuestInfoControlButtons"):Show(eQuestState == Quest.QuestState_Accepted or eQuestState == Quest.QuestState_Achieved or eQuestState == Quest.QuestState_Botched)
-	self.wndMain:FindChild("QuestInfoControlButtons"):SetText(eQuestState)
 	if eQuestState ~= Quest.QuestState_Abandoned then
 		local bCanShare = queSelected:CanShare()
 		local bIsTracked = queSelected:IsTracked()
@@ -1045,6 +1070,7 @@ end
 -----------------------------------------------------------------------------------------------
 
 function BetterQuestLog:OnQuestStateChanged(queUpdated, eState)
+	Print("on quest state changed")
 	if type(eState) == "boolean" then
 		-- CODE ERROR! This is Quest Track Changed.
 		return
@@ -1070,6 +1096,8 @@ function BetterQuestLog:OnQuestStateChanged(queUpdated, eState)
 			self.wndMain:FindChild("QuestInfoControls"):Show(false)
 		end
 	end
+	
+	self:UpdateActiveQuestTable(queUpdated)
 	
 	-- only broadcast updates if we're in a group
 	if self.isDebugMode then
@@ -1176,17 +1204,20 @@ function BetterQuestLog:OnGroupJoin()
 end
 
 function BetterQuestLog:OnQuestObjectiveUpdated(queUpdated)
+	Print("On quest objective updated")
 	local queCurrent = self.wndMain:FindChild("RightSide"):GetData()
-	if queCurrent and queCurrent:GetId() == queUpdated:GetId() then
-		self:RedrawEverything() --redraw if we're looking at the quest that just updated
-	end
-
+	
 	-- only broadcast updates if we're in a group
 	if GroupLib.InGroup() or GroupLib.InRaid() then
 		self:BroadcastUpdate(queUpdated)
 	end
 	
-	if queCurrent and queCurrent:GetState() == Quest.QuestState_Achieved then
+	if queCurrent and queCurrent:GetId() == queUpdated:GetId() then
+		if queCurrent:GetState() == Quest.QuestState_Achieved then
+			self:OnDestroyQuestObject(queUpdated)
+		end
+		self:RedrawEverything() --redraw if we're looking at the quest that just updated
+	elseif queCurrent and queCurrent:GetState() == Quest.QuestState_Achieved then
 		self:OnDestroyQuestObject(queUpdated)
 		self:RedrawEverything()
 	end
