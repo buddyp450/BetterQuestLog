@@ -119,19 +119,19 @@ end
 
 function BetterQuestLog:BetterQuestLogLoaded()
 	if GameLib.GetPlayerUnit() == nil or GameLib.GetPlayerUnit():GetName() == nil then
-		Print("GameLib.GetPlayer wasn't ready... waiting 3 seconds")
+		--Print("GameLib.GetPlayer wasn't ready... waiting 3 seconds")
 		Apollo.CreateTimer("OnLoadFinishedTimer", 3, false)
 		Apollo.StartTimer("OnLoadFinishedtimer")
 	else
-		Print("better quest log loaded")
+		--Print("better quest log loaded")
 		self:CreateActiveQuestsTable() -- not really happy with this atm
 		self:ObtainGroupMembers()
 		if self.isDebugMode or GroupLib.InGroup() or GroupLib.InRaid() then
-			Print("detected I was already in a group")
+			--Print("detected I was already in a group")
 			self:BroadcastActiveQuests()
 			self:RequestGroupBroadcast()
-		else
-			Print("did nothing because i'm not in a group and debug is not on")
+		--else
+			--Print("did nothing because i'm not in a group and debug is not on")
 		end
 	end
 end
@@ -176,7 +176,7 @@ end
 function BetterQuestLog:CreateActiveQuestsTable()
 	-- here we simply iterate through every quest in the game <maybe?> and check if it's completed, horrible right? I'm not even
 	-- sure that's what happens exactly..
-	Print("creating active quests table")
+	--Print("creating active quests table")
 	self.activeQuests = {} -- make sure nothing old is in here for when we repopulate it
 	for key, qcCategory in pairs(QuestLog_GetKnownCategories()) do
 		for key, epiEpisode in pairs(qcCategory:GetEpisodes()) do
@@ -192,7 +192,7 @@ end
 
 function BetterQuestLog:UpdateActiveQuestTable(queTarget)
 	local qTitle = queTarget:GetTitle()
-	Print("Updating active quest table with.. " .. qTitle)
+	--Print("Updating active quest table with.. " .. qTitle)
 	if self.activeQuests[qTitle] ~= nil then
 		local eState = queTarget:GetState()
 		if eState ~= Quest.QuestState_Completed and eState ~= Quest.QuestState_Abandoned and eState ~= Quest.QuestState_Ignored and eState ~= Quest.QuestState_Botched then
@@ -270,7 +270,7 @@ function BetterQuestLog:OnBQLMessage(channel, tMsg)
 	if tMsg.strEventName == "RequestBroadcast" and tMsg.strPlayerName == myName then
 		-- it was, share with the world my quest log
 		--this part confirmed working appropriately
-		Print("my quest log was requested... broadcasting")
+		--Print("my quest log was requested... broadcasting")
 		self:BroadcastActiveQuests()
 	--if the message wasn't a request for broadcast it was a QuestUpdated from someone else..
 	--check that they're in my group and update if so
@@ -323,7 +323,7 @@ function BetterQuestLog:CountInstancesOfQuestId(queId)
 end
 
 function BetterQuestLog:OnQuestInit()
-	Print("on quest init")
+	--Print("on quest init")
 end
 
 function BetterQuestLog:Initialize()
@@ -471,7 +471,7 @@ function BetterQuestLog:RedrawFromUI()
 end
 
 function BetterQuestLog:RedrawEverything()
-	Print("called redraw everything")
+	--Print("called redraw everything")
 	if not self.wndMain or not self.wndMain:IsValid() then
 		return
 	end
@@ -1070,7 +1070,7 @@ end
 -----------------------------------------------------------------------------------------------
 
 function BetterQuestLog:OnQuestStateChanged(queUpdated, eState)
-	Print("on quest state changed")
+	--Print("on quest state changed")
 	if type(eState) == "boolean" then
 		-- CODE ERROR! This is Quest Track Changed.
 		return
@@ -1108,7 +1108,7 @@ function BetterQuestLog:OnQuestStateChanged(queUpdated, eState)
 end
 
 function BetterQuestLog:BroadcastActiveQuests()
-	Print("broadcasting my active quests")
+	--Print("broadcasting my active quests")
 	for key, quest in pairs(self.activeQuests) do
 		self:BroadcastUpdate(quest)
 	end
@@ -1142,7 +1142,7 @@ function BetterQuestLog:BroadcastUpdate(queUpdated)
 end
 
 function BetterQuestLog:OnGroupLeft(reason) -- I left a group
-	Print("I am no longer in a group, wiped out groupMembers table..")
+	--Print("I am no longer in a group, wiped out groupMembers table..")
 	self.groupMembers = {} --wipe out
 	self:RedrawEverything()
 end
@@ -1150,7 +1150,7 @@ end
 function BetterQuestLog:OnGroupRemove(name, reason) --a member in my group was removed
 	for key, member in pairs(self.groupMembers) do
 		if member.strPlayerName == name then
-			Print("player " .. name .. " was removed from group, removing from table")
+			--Print("player " .. name .. " was removed from group, removing from table")
 			self.groupMembers[name] = nil
 			break
 		end
@@ -1176,8 +1176,8 @@ function BetterQuestLog:RequestGroupBroadcast()
 					Apollo.CreateTimer("ReRequestBroadcast", 1, false)
 					Apollo.StartTimer("ReRequestBroadcast")
 					break
-				else
-					Print("requested broadcast from: " .. msg.strPlayerName)
+				--else
+					--Print("requested broadcast from: " .. msg.strPlayerName)
 				end
 				
 				if self.sentCount == nil then
@@ -1204,7 +1204,7 @@ function BetterQuestLog:OnGroupJoin()
 end
 
 function BetterQuestLog:OnQuestObjectiveUpdated(queUpdated)
-	Print("On quest objective updated")
+	--Print("On quest objective updated")
 	local queCurrent = self.wndMain:FindChild("RightSide"):GetData()
 	
 	-- only broadcast updates if we're in a group
