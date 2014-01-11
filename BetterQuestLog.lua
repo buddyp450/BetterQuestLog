@@ -372,7 +372,7 @@ function BetterQuestLog:Initialize()
 	self.knRewardChoListHeight = self.wndMain:FindChild("QuestInfoRewardChoFrame"):GetHeight()
 --	self.knMoreInfoHeight = self.wndMain:FindChild("QuestInfoMoreInfoFrame"):GetHeight()
 	self.knMoreInfoHeight = self.wndMain:FindChild("QuestInfoMoreInfoText"):GetHeight()
-
+	
 	self.knEpisodeInfoHeight = self.wndMain:FindChild("EpisodeInfo"):GetHeight()
 	
 	--self:DestroyAndRedraw()
@@ -695,6 +695,10 @@ function BetterQuestLog:ResizeRight()
 	for key, wndObj in pairs(self.wndMain:FindChild("QuestInfoObjectivesList"):GetChildren()) do
 		nWidth, nHeight = wndObj:FindChild("ObjectivesItemText"):SetHeightToContentHeight()
 		nHeight = wndObj:FindChild("QuestProgressItem") and nHeight + wndObj:FindChild("QuestProgressItem"):GetHeight() or nHeight
+		--if wndObj:FindChild("QuestProgressItem") ~= nil then
+		--	nHeight = nHeight + wndObj:FindChild("QuestProgressItem"):GetHeight()
+		--end
+
 		nLeft, nTop, nRight, nBottom = wndObj:GetAnchorOffsets()
 		wndObj:SetAnchorOffsets(nLeft, nTop, nRight, nTop + math.max(self.knObjectivesItemHeight, nHeight + 8)) -- TODO: Hardcoded formatting of text pad
 	end
@@ -721,7 +725,7 @@ function BetterQuestLog:ResizeRight()
 	nHeight = 0
 	--if self.wndMain:FindChild("QuestInfoMoreInfoToggleBtn"):IsChecked() then
 		nWidth, nHeight = self.wndMain:FindChild("QuestInfoMoreInfoText"):SetHeightToContentHeight()
-		nHeight = nHeight + 32
+		--nHeight = nHeight + 32 --unneeded padding and should add padding as part of the GUI layout instead anyways IMO
 --	end
 	--nLeft, nTop, nRight, nBottom = self.wndMain:FindChild("QuestInfoMoreInfoFrame"):GetAnchorOffsets()
 	nLeft, nTop, nRight, nBottom = self.wndMain:FindChild("QuestInfoMoreInfoText"):GetAnchorOffsets()
@@ -810,8 +814,7 @@ function BetterQuestLog:DrawRightSide(queSelected)
 		wndRight:FindChild("QuestInfoTitle"):SetTextColor(ApolloColor.new("white"))
 	end
 	
-	--the extra P element is for another line space
-	wndRight:FindChild("QuestInfoDescriptionText"):SetAML("<P Font=\"CRB_InterfaceMedium\" TextColor=\"ff2f94ac\">"..strQuestSummary.."</P><P TextColor=\"0\">.</P>")
+	wndRight:FindChild("QuestInfoDescriptionText"):SetAML("<P Font=\"CRB_InterfaceMedium\" TextColor=\"ff2f94ac\">"..strQuestSummary.."</P>")
 	wndRight:FindChild("QuestInfoDescriptionText"):SetHeightToContentHeight()
 
 	-- Episode Summary
