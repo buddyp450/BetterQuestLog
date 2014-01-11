@@ -291,8 +291,8 @@ function BetterQuestLog:OnBQLMessage(channel, tMsg)
 		Apollo.CreateTimer("RedrawFromUpdate", 2, false) -- create a 2 second timer for live updating
 		Apollo.StartTimer("RedrawFromUpdate")
 		self.needsRedraw = true
-	else
-		NOPE() -- will create a hilarious stack trace if reached
+	--else -- NO! don't do this!
+		--NOPE() -- will create a hilarious stack trace if reached --WAS REALLY REALLY BAD - PREVENTS EVERYONE FROM USING THIS PROPERLY
 	end
 end
 
