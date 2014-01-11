@@ -348,7 +348,7 @@ function BetterQuestLog:Initialize()
 	self.wndMain:FindChild("LeftSideFilterBtnShowActive"):SetCheck(true)
 	self.wndMain:FindChild("ShowLevelCheckboxBtn"):SetCheck(false)
 	self.wndMain:FindChild("QuestAbandonPopoutBtn"):AttachWindow(self.wndMain:FindChild("QuestAbandonConfirm"))
-	self.wndMain:FindChild("QuestInfoMoreInfoToggleBtn"):AttachWindow(self.wndMain:FindChild("QuestInfoMoreInfoTextBG"))
+	--self.wndMain:FindChild("QuestInfoMoreInfoToggleBtn"):AttachWindow(self.wndMain:FindChild("QuestInfoMoreInfoTextBG"))
 	--self.wndMain:FindChild("EpisodeSummaryExpandBtn"):AttachWindow(self.wndMain:FindChild("EpisodeSummaryPopoutTextBG"))
 
 	-- Measure Windows
@@ -370,7 +370,9 @@ function BetterQuestLog:Initialize()
 
 	self.knRewardRecListHeight = self.wndMain:FindChild("QuestInfoRewardRecFrame"):GetHeight()
 	self.knRewardChoListHeight = self.wndMain:FindChild("QuestInfoRewardChoFrame"):GetHeight()
-	self.knMoreInfoHeight = self.wndMain:FindChild("QuestInfoMoreInfoFrame"):GetHeight()
+--	self.knMoreInfoHeight = self.wndMain:FindChild("QuestInfoMoreInfoFrame"):GetHeight()
+	self.knMoreInfoHeight = self.wndMain:FindChild("QuestInfoMoreInfoText"):GetHeight()
+
 	self.knEpisodeInfoHeight = self.wndMain:FindChild("EpisodeInfo"):GetHeight()
 	
 	--self:DestroyAndRedraw()
@@ -422,7 +424,7 @@ function BetterQuestLog:OnGenericEvent_ShowQuestLog(queTarget)
 		--end
 		--TOOOOOO SLOOOOWWW
 		
-		wndCategory:FindChild("PreviousTopLevelBtn"):SetText(wndQuest)
+		--wndCategory:FindChild("PreviousTopLevelBtn"):SetText(wndQuest)
 		
 		if wndQuest then
 			local wndTop = wndQuest:FindChild("TopLevelBtn")
@@ -717,12 +719,16 @@ function BetterQuestLog:ResizeRight()
 
 	-- More Info
 	nHeight = 0
-	if self.wndMain:FindChild("QuestInfoMoreInfoToggleBtn"):IsChecked() then
+	--if self.wndMain:FindChild("QuestInfoMoreInfoToggleBtn"):IsChecked() then
 		nWidth, nHeight = self.wndMain:FindChild("QuestInfoMoreInfoText"):SetHeightToContentHeight()
 		nHeight = nHeight + 32
-	end
-	nLeft, nTop, nRight, nBottom = self.wndMain:FindChild("QuestInfoMoreInfoFrame"):GetAnchorOffsets()
-	self.wndMain:FindChild("QuestInfoMoreInfoFrame"):SetAnchorOffsets(nLeft, nTop, nRight, nTop + nHeight + self.knMoreInfoHeight)
+--	end
+	--nLeft, nTop, nRight, nBottom = self.wndMain:FindChild("QuestInfoMoreInfoFrame"):GetAnchorOffsets()
+	nLeft, nTop, nRight, nBottom = self.wndMain:FindChild("QuestInfoMoreInfoText"):GetAnchorOffsets()
+
+	--self.wndMain:FindChild("QuestInfoMoreInfoFrame"):SetAnchorOffsets(nLeft, nTop, nRight, nTop + nHeight + self.knMoreInfoHeight)
+	self.wndMain:FindChild("QuestInfoMoreInfoText"):SetAnchorOffsets(nLeft, nTop, nRight, nTop + nHeight + self.knMoreInfoHeight)
+
 
 	-- Episode Summary
 	nHeight = 0
@@ -804,7 +810,8 @@ function BetterQuestLog:DrawRightSide(queSelected)
 		wndRight:FindChild("QuestInfoTitle"):SetTextColor(ApolloColor.new("white"))
 	end
 	
-	wndRight:FindChild("QuestInfoDescriptionText"):SetAML("<P Font=\"CRB_InterfaceMedium\" TextColor=\"ff2f94ac\">"..strQuestSummary.."</P>")
+	--the extra P element is for another line space
+	wndRight:FindChild("QuestInfoDescriptionText"):SetAML("<P Font=\"CRB_InterfaceMedium\" TextColor=\"ff2f94ac\">"..strQuestSummary.."</P><P TextColor=\"0\">.</P>")
 	wndRight:FindChild("QuestInfoDescriptionText"):SetHeightToContentHeight()
 
 	-- Episode Summary
@@ -829,23 +836,32 @@ function BetterQuestLog:DrawRightSide(queSelected)
 	-- More Info
 	local strMoreInfo = ""
 	local tMoreInfoText = queSelected:GetMoreInfoText()
-	if #tMoreInfoText > 0 and self.wndMain:FindChild("QuestInfoMoreInfoToggleBtn"):IsChecked() then
+	
+	-- this automatically opens our more info button if it exists
+	--if #tMoreInfoText > 0 and not self.wndMain:FindChild("QuestInfoMoreInfoToggleBtn"):IsChecked() then
+	--	self.wndMain:FindChild("QuestInfoMoreInfoToggleBtn"):SetCheck(true)
+	--	self.wndMain:FindChild("QuestInfoMoreInfoToggleBtnText"):SetText(Apollo.GetString("QuestLog_ClosePlaybackLog"))
+	--end
+		
+	if #tMoreInfoText > 0 then --and self.wndMain:FindChild("QuestInfoMoreInfoToggleBtn"):IsChecked() then
+		wndRight:FindChild("QuestInfoMoreInfoText"):Show(true)
 		for idx, tValues in pairs(tMoreInfoText) do
 			if string.len(tValues.say) > 0 or string.len(tValues.response) > 0 then
 				strMoreInfo = strMoreInfo .. "<P Font=\"CRB_InterfaceMedium\" TextColor=\"ff2f94ac\">"..tValues.say.."</P>"
 				strMoreInfo = strMoreInfo .. "<P Font=\"CRB_InterfaceMedium\" TextColor=\"ffffffff\">"..tValues.response.."</P>"
 				if idx ~= #tMoreInfoText then
-					strMoreInfo = strMoreInfo .. "<P TextColor=\"0\">.</P>"
+					--strMoreInfo = strMoreInfo .. "<P TextColor=\"0\">.</P>"
 				end
 			end
 		end
 	else
-		wndRight:FindChild("QuestInfoMoreInfoToggleBtn"):SetCheck(false)
-		wndRight:FindChild("QuestInfoMoreInfoToggleBtnText"):SetText(Apollo.GetString("QuestLog_OpenPlaybackLog"))
+		--wndRight:FindChild("QuestInfoMoreInfoToggleBtn"):SetCheck(false)
+		--wndRight:FindChild("QuestInfoMoreInfoToggleBtnText"):SetText(Apollo.GetString("QuestLog_OpenPlaybackLog"))
+		wndRight:FindChild("QuestInfoMoreInfoText"):Show(false)
 	end
 	wndRight:FindChild("QuestInfoMoreInfoText"):SetAML(strMoreInfo)
 	wndRight:FindChild("QuestInfoMoreInfoText"):SetHeightToContentHeight()
-	wndRight:FindChild("QuestInfoMoreInfoFrame"):Show(#tMoreInfoText > 0)
+	--wndRight:FindChild("QuestInfoMoreInfoFrame"):Show(#tMoreInfoText > 0)
 
 	-- Objectives
 	wndRight:FindChild("QuestInfoObjectivesList"):DestroyChildren()
