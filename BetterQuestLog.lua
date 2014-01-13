@@ -1167,6 +1167,10 @@ function BetterQuestLog:OnGroupLeft(reason) -- I left a group
 end
 
 function BetterQuestLog:OnGroupRemove(name, reason) --a member in my group was removed
+	if self.groupMembers == nil then
+		return
+	end
+	
 	for key, member in pairs(self.groupMembers) do
 		if member.strPlayerName == name then
 			--Print("player " .. name .. " was removed from group, removing from table")
