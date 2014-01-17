@@ -4,11 +4,13 @@
 -----------------------------------------------------------------------------------------------
 
 require "Window"
-require "GameLib"
 require "Quest"
+require "QuestLib"
 require "QuestCategory"
 require "Unit"
 require "Episode"
+require "GameLib"
+require "Money"
 require "GroupLib"
 
 local BetterQuestLog = {}
@@ -96,6 +98,8 @@ local karEvalColors =
 }
 
 function BetterQuestLog:OnLoad()
+	self.xmlDoc = XmlDoc.CreateFromFile("BetterQuestLog.xml") -- BetterQuestLog will always be kept in memory, so save parsing it over and over
+	
 	Apollo.RegisterEventHandler("ShowQuestLog", 	 	 "Initialize", self)
 	Apollo.RegisterEventHandler("ShowQuestLog",		 "CheckIfNeedsRedraw", self)
 	Apollo.RegisterEventHandler("Dialog_QuestShare", 	 "OnDialog_QuestShare", self)
@@ -105,11 +109,11 @@ function BetterQuestLog:OnLoad()
 	Apollo.RegisterTimerHandler("ShareTimeout", 	 	 "OnShareTimeout", self)
 	Apollo.RegisterTimerHandler("OnLoadFinishedTimer",	 "BetterQuestLogLoaded", self)
 	Apollo.RegisterTimerHandler("ReRequestBroadcast", 	 "RequestGroupBroadcast", self)
-	
+
 	self.isDebugMode = false
 	self.bqlChannel = ICCommLib.JoinChannel("BQLChannel", "OnBQLMessage", self)
 	
-	self.nQuestCountMax = QuestLog_GetMaxCount() -- we need this here for... something, figure it out --FIXME
+	self.nQuestCountMax = QuestLib.GetMaxCount() -- we need this here for... something, figure it out --FIXME
 	
 	-- added a timer so that my broadcasting will work appropriately being called from OnLoad(thanks packetdancer!)
 	-- we needed to wait for onload to finish
@@ -167,7 +171,7 @@ function BetterQuestLog:ObtainGroupMembers()
 		self:AddGroupMember(GameLib.GetPlayerUnit():GetName())
 	else
 		for i=1, nGroupMemberCount do
-			self:AddGroupMember(GroupLib.GetGroupMember(i).characterName)
+			self:AddGroupMember(GroupLib.GetGroupMember(i).strCharacterName)
 		end	
 	end
 end
@@ -178,7 +182,7 @@ function BetterQuestLog:CreateActiveQuestsTable()
 	-- sure that's what happens exactly..
 	--Print("creating active quests table")
 	self.activeQuests = {} -- make sure nothing old is in here for when we repopulate it
-	for key, qcCategory in pairs(QuestLog_GetKnownCategories()) do
+	for key, qcCategory in pairs(QuestLib.GetKnownCategories()) do
 		for key, epiEpisode in pairs(qcCategory:GetEpisodes()) do
 			for key, queQuest in pairs(epiEpisode:GetAllQuests(qcCategory:GetId())) do
 				local eState = queQuest:GetState()	
@@ -224,7 +228,7 @@ function BetterQuestLog:IsGroupMemberMessage(tMsg)
 	if nGroupMemberCount > 1 then
 		for idx = 1, nGroupMemberCount do
 			local tMemberInfo = GroupLib.GetGroupMember(idx)
-			if tMemberInfo.characterName == tMsg.strPlayerName then
+			if tMemberInfo.strCharacterName == tMsg.strPlayerName then
 				return true
 			end
 		end
@@ -276,7 +280,6 @@ function BetterQuestLog:OnBQLMessage(channel, tMsg)
 	--check that they're in my group and update if so
 	elseif tMsg.strEventName == "QuestUpdated" and self:IsGroupMemberMessage(tMsg) then 
 		self:AddGroupMember(tMsg.strPlayerName) -- won't add if it already exists
-		
 		-- store the information we received in our table (overwriting any previous)
 		self.groupMembers[tMsg.strPlayerName].quests[tMsg.strQuestId] = tMsg.eQuestState
 		-- todo: handle the drawing of the update wherever we actually draw, not here
@@ -339,7 +342,7 @@ function BetterQuestLog:Initialize()
 	Apollo.RegisterTimerHandler("RedrawQuestLogInOneSec", 			"DestroyAndRedraw", self) -- TODO Remove if possible
 	Apollo.RegisterTimerHandler("RedrawFromUpdate",			 	"OnRedrawFromUpdate", self)
 
-	self.wndMain = Apollo.LoadForm("BetterQuestLog.xml", "BetterQuestLogForm", g_wndProgressLog:FindChild("ContentWnd_1"), self)
+	self.wndMain = Apollo.LoadForm(self.xmlDoc, "BetterQuestLogForm", g_wndProgressLog:FindChild("ContentWnd_1"), self)
 
 	-- Variables
 	self.wndLastBottomLevelBtnSelection = nil -- Just for button pressed state faking of text color
@@ -352,19 +355,19 @@ function BetterQuestLog:Initialize()
 	--self.wndMain:FindChild("EpisodeSummaryExpandBtn"):AttachWindow(self.wndMain:FindChild("EpisodeSummaryPopoutTextBG"))
 
 	-- Measure Windows
-	local wndMeasure = Apollo.LoadForm("BetterQuestLog.xml", "PreviousTopLevelItem", nil, self)
+	local wndMeasure = Apollo.LoadForm(self.xmlDoc, "PreviousTopLevelItem", nil, self)
 	self.knTopLevelHeight = wndMeasure:GetHeight()
 	wndMeasure:Destroy()
 
-	wndMeasure = Apollo.LoadForm("BetterQuestLog.xml", "MiddleLevelItem", nil, self)
+	wndMeasure = Apollo.LoadForm(self.xmlDoc, "MiddleLevelItem", nil, self)
 	self.knMiddleLevelHeight = wndMeasure:GetHeight()
 	wndMeasure:Destroy()
 
-	wndMeasure = Apollo.LoadForm("BetterQuestLog.xml", "BottomLevelItem", nil, self)
+	wndMeasure = Apollo.LoadForm(self.xmlDoc, "BottomLevelItem", nil, self)
 	self.knBottomLevelHeight = wndMeasure:GetHeight()
 	wndMeasure:Destroy()
 
-	wndMeasure = Apollo.LoadForm("BetterQuestLog.xml", "ObjectivesItem", nil, self)
+	wndMeasure = Apollo.LoadForm(self.xmlDoc, "ObjectivesItem", nil, self)
 	self.knObjectivesItemHeight = wndMeasure:GetHeight()
 	wndMeasure:Destroy()
 
@@ -481,7 +484,7 @@ function BetterQuestLog:RedrawEverything()
 	self:RedrawLeftTree()
 	local bLeftSideHasResults = #self.wndMain:FindChild("LeftSideScroll"):GetChildren() ~= 0
 	self.wndMain:FindChild("LeftSideScroll"):SetText(bLeftSideHasResults and "" or Apollo.GetString("QuestLog_NoResults"))
-	--self.wndMain:FindChild("QuestInfoControls"):Show(bLeftSideHasResults) --moved to "DrawRightSide" function since it makes more sense there IMO
+	--self.wndMain:FindChild("QuestInfoControls"):Show(bLeftSideHasResults)
 	--self.wndMain:FindChild("RightSide"):Show(bLeftSideHasResults)
 
 	if self.wndMain:FindChild("RightSide"):IsShown() and self.wndMain:FindChild("RightSide"):GetData() then
@@ -496,7 +499,7 @@ function BetterQuestLog:RedrawLeftTree()
 		return
 	end
 
-	local nQuestCount = QuestLog_GetCount()
+	local nQuestCount = QuestLib.GetCount()
 	local strColor = "ff2f94ac"
 	if nQuestCount + 3 >=  self.nQuestCountMax then
 		strColor = "ffff0000"
@@ -511,7 +514,7 @@ function BetterQuestLog:RedrawLeftTree()
 	self.wndMain:FindChild("QuestLogCountText"):SetAML(string.format("<P Font=\"CRB_InterfaceSmall_O\" Align=\"Center\" TextColor=\"ff2f94ac\">%s</P>", strActiveQuests))
 	
 	local bFilteringFinished = self:IsFilteringAsFinished()
-	for key, qcCategory in pairs(QuestLog_GetKnownCategories()) do
+	for key, qcCategory in pairs(QuestLib.GetKnownCategories()) do
 		local strCategoryKey = "C"..qcCategory:GetId()
 		local wndCategory = self:FactoryProduce(self.wndMain:FindChild("LeftSideScroll"), "PreviousTopLevelItem", strCategoryKey)
 		wndCategory:FindChild("PreviousTopLevelBtnText"):SetText(qcCategory:GetTitle())
@@ -779,6 +782,10 @@ function BetterQuestLog:HelperEpisodeSummaryText(strArgument, bShowCaps) -- TODO
 end
 
 function BetterQuestLog:DrawRightSide(queSelected)
+	if not self.wndMain or not self.wndMain:IsValid() then
+		return
+	end
+
 	local wndRight = self.wndMain:FindChild("RightSide")
 	
 	--self.wndMain:FindChild("QuestInfoControls"):Show(true)
@@ -820,7 +827,7 @@ function BetterQuestLog:DrawRightSide(queSelected)
 	-- Episode Summary
 	local epiParent = queSelected:GetEpisode()	
 	local bIsTasks = epiParent:GetId() == 1
-	local nEpisodeMax, nEpisodeProgress = epiParent:GetProgress()
+	local tEpisodeProgress = epiParent:GetProgress()
 	local strEpisodeDesc = ""
 	if not bIsTasks then
 		if epiParent:GetState() == Episode.EpisodeState_Complete then
@@ -833,7 +840,7 @@ function BetterQuestLog:DrawRightSide(queSelected)
 	wndRight:FindChild("EpisodeSummaryTitle"):SetText(self:HelperEpisodeSummaryText(epiParent:GetTitle(), false))
 	wndRight:FindChild("EpisodeSummaryTitle2"):SetText(self:HelperEpisodeSummaryText(epiParent:GetTitle(), true))
 	wndRight:FindChild("EpisodeSummaryProgText"):SetAML(string.format("<P Font=\"CRB_InterfaceSmall\" TextColor=\"ff31fcf6\" Align=\"Center\">"..
-	"(<T Font=\"CRB_InterfaceSmall\" TextColor=\"ffffb62e\" Align=\"Center\">%s</T>/%s)</P>", nEpisodeProgress, nEpisodeMax))
+	"(<T Font=\"CRB_InterfaceSmall\" TextColor=\"ffffb62e\" Align=\"Center\">%s</T>/%s)</P>", tEpisodeProgress.nCompleted, tEpisodeProgress.nTotal))
 	wndRight:FindChild("EpisodeSummaryPopoutText"):SetAML("<P Font=\"CRB_InterfaceMedium\" TextColor=\"ff2f94ac\">"..strEpisodeDesc.."</P>")
 
 	-- More Info
@@ -849,9 +856,9 @@ function BetterQuestLog:DrawRightSide(queSelected)
 	if #tMoreInfoText > 0 then --and self.wndMain:FindChild("QuestInfoMoreInfoToggleBtn"):IsChecked() then
 		wndRight:FindChild("QuestInfoMoreInfoText"):Show(true)
 		for idx, tValues in pairs(tMoreInfoText) do
-			if string.len(tValues.say) > 0 or string.len(tValues.response) > 0 then
-				strMoreInfo = strMoreInfo .. "<P Font=\"CRB_InterfaceMedium\" TextColor=\"ff2f94ac\">"..tValues.say.."</P>"
-				strMoreInfo = strMoreInfo .. "<P Font=\"CRB_InterfaceMedium\" TextColor=\"ffffffff\">"..tValues.response.."</P>"
+			if string.len(tValues.strSay) > 0 or string.len(tValues.strResponse) > 0 then
+				strMoreInfo = strMoreInfo .. "<P Font=\"CRB_InterfaceMedium\" TextColor=\"ff2f94ac\">"..tValues.strSay.."</P>"
+				strMoreInfo = strMoreInfo .. "<P Font=\"CRB_InterfaceMedium\" TextColor=\"ffffffff\">"..tValues.strResponse.."</P>"
 				if idx ~= #tMoreInfoText then
 					--strMoreInfo = strMoreInfo .. "<P TextColor=\"0\">.</P>"
 				end
@@ -869,14 +876,14 @@ function BetterQuestLog:DrawRightSide(queSelected)
 	-- Objectives
 	wndRight:FindChild("QuestInfoObjectivesList"):DestroyChildren()
 	if eQuestState == Quest.QuestState_Achieved then
-		local wndObj = Apollo.LoadForm("BetterQuestLog.xml", "ObjectivesItem", wndRight:FindChild("QuestInfoObjectivesList"), self)
+		local wndObj = Apollo.LoadForm(self.xmlDoc, "ObjectivesItem", wndRight:FindChild("QuestInfoObjectivesList"), self)
 		local strAchieved = string.format("<T Font=\"CRB_InterfaceMedium\" TextColor=\"ffffffff\">%s</T>", queSelected:GetCompletionObjectiveText())
 		wndObj:FindChild("ObjectivesItemText"):SetAML(strAchieved)
 		wndRight:FindChild("QuestInfoObjectivesTitle"):SetText(Apollo.GetString("QuestLog_ReadyToTurnIn"))
 	elseif eQuestState == Quest.QuestState_Completed then
 		for key, tObjData in pairs(queSelected:GetVisibleObjectiveData()) do
-			if tObjData.completed < tObjData.needed then
-				local wndObj = Apollo.LoadForm("BetterQuestLog.xml", "ObjectivesItem", wndRight:FindChild("QuestInfoObjectivesList"), self)
+			if tObjData.nCompleted < tObjData.nNeeded then
+				local wndObj = Apollo.LoadForm(self.xmlDoc, "ObjectivesItem", wndRight:FindChild("QuestInfoObjectivesList"), self)
 				wndObj:FindChild("ObjectivesItemText"):SetAML(self:HelperBuildObjectiveTitleString(queSelected, tObjData))
 				self:HelperBuildObjectiveProgBar(queSelected, tObjData, wndObj, true)
 				wndObj:FindChild("ObjectiveBullet"):SetSprite("CRB_Basekit:kitIcon_Holo_Checkmark")
@@ -886,8 +893,9 @@ function BetterQuestLog:DrawRightSide(queSelected)
 		wndRight:FindChild("QuestInfoObjectivesTitle"):SetText(Apollo.GetString("QuestLog_CompletedObjectives"))
 	elseif eQuestState ~= Quest.QuestState_Mentioned then
 		for key, tObjData in pairs(queSelected:GetVisibleObjectiveData()) do
-			if tObjData.completed < tObjData.needed then
-				local wndObj = Apollo.LoadForm("BetterQuestLog.xml", "ObjectivesItem", wndRight:FindChild("QuestInfoObjectivesList"), self)
+			self.myDebugForNow = tObjData
+			if tObjData.nCompleted < tObjData.nNeeded then
+				local wndObj = Apollo.LoadForm(self.xmlDoc, "ObjectivesItem", wndRight:FindChild("QuestInfoObjectivesList"), self)
 				wndObj:FindChild("ObjectivesItemText"):SetAML(self:HelperBuildObjectiveTitleString(queSelected, tObjData))
 				self:HelperBuildObjectiveProgBar(queSelected, tObjData, wndObj)
 			end
@@ -896,22 +904,24 @@ function BetterQuestLog:DrawRightSide(queSelected)
 	end
 
 	-- Rewards Received
-	local tRewardsChoice, tRewardsRec = queSelected:GetRewardData()
+	local tRewardInfo = queSelected:GetRewardData()
 	wndRight:FindChild("QuestInfoRewardRecList"):DestroyChildren()
-	for key, tRewardData in pairs(tRewardsRec) do
-		local wndReward = Apollo.LoadForm("BetterQuestLog.xml", "RewardItem", wndRight:FindChild("QuestInfoRewardRecList"), self)
-		self:HelperBuildRewardsRec(wndReward, tRewardData, true)
+	for key, tReward in pairs(tRewardInfo.arFixedRewards) do
+		self.debugMore = self.xmlDoc
+		local wndReward = Apollo.LoadForm(self.xmlDoc, "RewardItem", wndRight:FindChild("QuestInfoRewardRecList"), self)
+		self:HelperBuildRewardsRec(wndReward, tReward, true)
 	end
 
 	-- Rewards To Choose
 	wndRight:FindChild("QuestInfoRewardChoList"):DestroyChildren()
-	for key, tRewardData in pairs(tRewardsChoice) do
-		local wndReward = Apollo.LoadForm("BetterQuestLog.xml", "RewardItem", wndRight:FindChild("QuestInfoRewardChoList"), self)
-		self:HelperBuildRewardsRec(wndReward, tRewardData, false)
+	for key, tReward in pairs(tRewardInfo.arRewardChoices) do
+		local wndReward = Apollo.LoadForm(self.xmlDoc, "RewardItem", wndRight:FindChild("QuestInfoRewardChoList"), self)
+		self:HelperBuildRewardsRec(wndReward, tReward, false)
 	end
 
 	-- Special reward formatting for finished quests
 	if eQuestState == Quest.QuestState_Completed then
+
 		wndRight:FindChild("QuestInfoRewardRecTitle"):SetText(Apollo.GetString("QuestLog_YouReceived"))
 		wndRight:FindChild("QuestInfoRewardChoTitle"):SetText(Apollo.GetString("QuestLog_YouChoseFrom"))
 	else
@@ -921,17 +931,17 @@ function BetterQuestLog:DrawRightSide(queSelected)
 
 	-- Call Button
 	if queSelected:GetContactInfo() and ktValidCallButtonStats[eQuestState] then
-		local idContact, strContactName, strSpriteName = queSelected:GetContactInfo()
-		
+		local tContactInfo = queSelected:GetContactInfo()
+
 		wndRight:FindChild("QuestInfoCallFrame"):Show(true)
-		wndRight:FindChild("QuestInfoCostumeWindow"):SetCostumeToCreatureId(idContact)
-		wndRight:FindChild("QuestInfoCallFrameText"):SetAML("<P Font=\"CRB_HeaderLarge\" TextColor=\"ff7fffb9\">" .. Apollo.GetString("QuestLog_ContactNPC") .. "</P><P Font=\"CRB_HeaderLarge\">" .. strContactName .. "</P>")
+		wndRight:FindChild("QuestInfoCostumeWindow"):SetCostumeToCreatureId(tContactInfo.idUnit)
+		wndRight:FindChild("QuestInfoCallFrameText"):SetAML("<P Font=\"CRB_HeaderLarge\" TextColor=\"ff7fffb9\">" .. Apollo.GetString("QuestLog_ContactNPC") .. "</P><P Font=\"CRB_HeaderLarge\">" .. tContactInfo.strName .. "</P>")
 	else
 		wndRight:FindChild("QuestInfoCallFrame"):Show(false)
 	end
 
 	-- Bottom Buttons (outside of Scroll)
-	--self.wndMain:FindChild("QuestInfoControlsHideBtn"):Show(eQuestState == Quest.QuestState_Abandoned or eQuestState == Quest.QuestState_Mentioned) --commented out this btn
+	--self.wndMain:FindChild("QuestInfoControlsHideBtn"):Show(eQuestState == Quest.QuestState_Abandoned or eQuestState == Quest.QuestState_Mentioned)
 	self.wndMain:FindChild("QuestInfoControlButtons"):Show(eQuestState == Quest.QuestState_Accepted or eQuestState == Quest.QuestState_Achieved or eQuestState == Quest.QuestState_Botched)
 	if eQuestState ~= Quest.QuestState_Abandoned then
 		local bCanShare = queSelected:CanShare()
@@ -940,13 +950,11 @@ function BetterQuestLog:DrawRightSide(queSelected)
 		self.wndMain:FindChild("QuestInfoControlsBGShare"):Show(bCanShare)
 		self.wndMain:FindChild("QuestInfoControlsBGShare"):SetTooltip(bCanShare and Apollo.GetString("QuestLog_ShareQuest") or String_GetWeaselString(Apollo.GetString("QuestLog_ShareNotPossible"), Apollo.GetString("QuestLog_ShareQuest")))
 		self.wndMain:FindChild("QuestTrackBtn"):Enable(eQuestState ~= Quest.QuestState_Botched)
-		self.wndMain:FindChild("QuestTrackBtn"):SetText(bIsTracked and Apollo.GetString("QuestLog_Untrack") or Apollo.GetString("QuestLog_Track")) 
+		self.wndMain:FindChild("QuestTrackBtn"):SetText(bIsTracked and Apollo.GetString("QuestLog_Untrack") or Apollo.GetString("QuestLog_Track"))
 		self.wndMain:FindChild("QuestTrackBtn"):SetTooltip(bIsTracked and Apollo.GetString("QuestLog_RemoveFromTracker") or Apollo.GetString("QuestLog_AddToTracker"))
 	end
 	self.wndMain:FindChild("QuestInfoControlButtons"):ArrangeChildrenHorz(1)
 
-	self.wndMain:FindChild("RightSide"):Show(true)
-	
 	-- Hide Pop Out CloseOnExternalClick windows
 	self.wndMain:FindChild("QuestAbandonConfirm"):Show(false)
 end
@@ -1190,7 +1198,7 @@ function BetterQuestLog:RequestGroupBroadcast()
 		local msg = {}
 		msg.strEventName = "RequestBroadcast"
 		for i=1,nMembers do
-			msg.strPlayerName = GroupLib.GetGroupMember(i).characterName
+			msg.strPlayerName = GroupLib.GetGroupMember(i).strCharacterName
 			--msg.strPlayerName = myName
 			if msg.strPlayerName ~= myName then -- don't request a broadcast from myself
 				local result = self.bqlChannel:SendMessage(msg)
@@ -1263,7 +1271,7 @@ end
 
 function BetterQuestLog:OnDialog_QuestShare(queToShare, unitTarget)
 	if self.wndShare == nil then
-		self.wndShare = Apollo.LoadForm("BetterQuestLog.xml", "ShareQuestNotice", nil, self)
+		self.wndShare = Apollo.LoadForm(self.xmlDoc, "ShareQuestNotice", nil, self)
 	end
 	self.wndShare:ToFront()
 	self.wndShare:Show(true)
@@ -1310,35 +1318,44 @@ function BetterQuestLog:HelperBuildRewardsRec(wndReward, tRewardData, bReceived)
 	local strText = ""
 	local strSprite = ""
 
-	if tRewardData.typeId == Quest.Quest2RewardType_Item then
-		strText = tRewardData.item:GetName()
-		strSprite = tRewardData.item:GetIcon()
-		self:HelperBuildItemTooltip(wndReward, tRewardData.item)
-		wndReward:FindChild("RewardItemCantUse"):Show(self:HelperPrereqFailed(tRewardData.item))
-		wndReward:FindChild("RewardItemText"):SetTextColor(karEvalColors[tRewardData.item:GetItemQuality()])
-		wndReward:FindChild("RewardIcon"):SetText(tRewardData.objectAmount > 1 and tRewardData.objectAmount or "")
-	elseif tRewardData.typeId == Quest.Quest2RewardType_Reputation then
-		strText = String_GetWeaselString(Apollo.GetString("Dialog_FactionRepReward"), tRewardData.objectAmount, tRewardData.faction)
+	if tRewardData.eType == Quest.Quest2RewardType_Item then
+		strText = tRewardData.itemReward:GetName()
+		strSprite = tRewardData.itemReward:GetIcon()
+		self:HelperBuildItemTooltip(wndReward, tRewardData.itemReward)
+		wndReward:FindChild("RewardItemCantUse"):Show(self:HelperPrereqFailed(tRewardData.itemReward))
+		wndReward:FindChild("RewardItemText"):SetTextColor(karEvalColors[tRewardData.itemReward:GetItemQuality()])
+		wndReward:FindChild("RewardIcon"):SetText(tRewardData.nAmount > 1 and tRewardData.nAmount or "")
+	elseif tRewardData.eType == Quest.Quest2RewardType_Reputation then
+		strText = String_GetWeaselString(Apollo.GetString("Dialog_FactionRepReward"), tRewardData.nAmount, tRewardData.strFactionName)
 		strSprite = "Icon_ItemMisc_UI_Item_Parchment"
 		wndReward:SetTooltip(strText)
-	elseif tRewardData.typeId == Quest.Quest2RewardType_TradeSkillXp then
-		strText = String_GetWeaselString(Apollo.GetString("Dialog_TradeskillXPReward"), tRewardData.objectAmount, tRewardData.tradeskill)
+	elseif tRewardData.eType == Quest.Quest2RewardType_TradeSkillXp then
+		strText = String_GetWeaselString(Apollo.GetString("Dialog_TradeskillXPReward"), tRewardData.nXP, tRewardData.strTradeskill)
 		strSprite = "Icon_ItemMisc_tool_0001"
 		wndReward:SetTooltip(strText)
-	elseif tRewardData.typeId == Quest.Quest2RewardType_Money then
-		local nInCopper = tRewardData.objectAmount
-		if nInCopper >= 1000000 then
-			strText = String_GetWeaselString(Apollo.GetString("CRB_Platinum"), math.floor(nInCopper / 1000000))
+	elseif tRewardData.eType == Quest.Quest2RewardType_Money then
+		if tRewardData.eCurrencyType == Money.CodeEnumCurrencyType.Credits then
+			local nInCopper = tRewardData.nAmount
+			if nInCopper >= 1000000 then
+				strText = String_GetWeaselString(Apollo.GetString("CRB_Platinum"), math.floor(nInCopper / 1000000))
+			end
+			if nInCopper >= 10000 then
+				strText = String_GetWeaselString(Apollo.GetString("CRB_Gold"), math.floor(nInCopper % 1000000 / 10000))
+			end
+			if nInCopper >= 100 then
+				strText = String_GetWeaselString(Apollo.GetString("CRB_Silver"), math.floor(nInCopper % 10000 / 100))
+			end
+			strText = strText .. " " .. String_GetWeaselString(Apollo.GetString("CRB_Copper"), math.floor(nInCopper % 100))
+			strSprite = "ClientSprites:Icon_ItemMisc_bag_0001"
+			wndReward:SetTooltip(strText)
+		else
+			local tDenomInfo = GameLib.GetPlayerCurrency(tRewardData.eCurrencyType):GetDenomInfo()
+			if tDenomInfo ~= nil then
+				strText = tRewardData.nAmount .. " " .. tDenomInfo[1].strName
+				strSprite = "ClientSprites:Icon_ItemMisc_bag_0001"
+				wndReward:SetTooltip(strText)
+			end
 		end
-		if nInCopper >= 10000 then
-			strText = String_GetWeaselString(Apollo.GetString("CRB_Gold"), math.floor(nInCopper % 1000000 / 10000))
-		end
-		if nInCopper >= 100 then
-			strText = String_GetWeaselString(Apollo.GetString("CRB_Silver"), math.floor(nInCopper % 10000 / 100))
-		end
-		strText = strText .. " " .. String_GetWeaselString(Apollo.GetString("CRB_Copper"), math.floor(nInCopper % 100))
-		strSprite = "ClientSprites:Icon_ItemMisc_bag_0001"
-		wndReward:SetTooltip(strText)
 	end
 
 	wndReward:FindChild("RewardIcon"):SetSprite(strSprite)
@@ -1350,31 +1367,34 @@ end
 -----------------------------------------------------------------------------------------------
 
 function BetterQuestLog:HelperBuildObjectiveTitleString(queQuest, tObjective, bIsTooltip)
-	local strResult = string.format("<T Font=\"CRB_InterfaceMedium\" TextColor=\"ffffffff\">%s</T>", tObjective.description)
+	local strResult = string.format("<T Font=\"CRB_InterfaceMedium\" TextColor=\"ffffffff\">%s</T>", tObjective.strDescription)
 
 	-- Prefix Optional or Progress if it hasn't been finished yet
-	if tObjective.completed < tObjective.needed then
-		if tObjective and not tObjective.isRequired then
+	if tObjective.nCompleted < tObjective.nNeeded then
+		if tObjective and not tObjective.bIsRequired then
 			strResult = string.format("<T Font=\"CRB_InterfaceMedium_B\" TextColor=\"ffffffff\">%s</T>%s", Apollo.GetString("QuestLog_Optional"), strResult)
 		end
 
-		if tObjective.needed > 1 and queQuest:DisplayObjectiveProgressBar(tObjective.index) then
-			local nCompleted = queQuest:GetState() == Quest.QuestState_Completed and tObjective.needed or tObjective.completed
-			strResult = string.format("<T Font=\"CRB_InterfaceMedium_B\" TextColor=\"ffffffff\">%s%% </T>%s", math.floor(nCompleted / tObjective.needed * 100), strResult)
-		elseif tObjective.needed > 1 then
-			local nCompleted = queQuest:GetState() == Quest.QuestState_Completed and tObjective.needed or tObjective.completed
-			strResult = string.format("<T Font=\"CRB_InterfaceMedium_B\" TextColor=\"ffffffff\">[%s/%s] </T>%s", nCompleted, tObjective.needed, strResult)
+		if tObjective.nNeeded > 1 and queQuest:DisplayObjectiveProgressBar(tObjective.nIndex) then
+			local nCompleted = queQuest:GetState() == Quest.QuestState_Completed and tObjective.nNeeded or tObjective.nCompleted
+			local nPercentText = String_GetWeaselString(Apollo.GetString("CRB_Percent"), math.floor(nCompleted / tObjective.nNeeded * 100))
+			strResult = string.format("<T Font=\"CRB_InterfaceMedium_B\" TextColor=\"ffffffff\">%s </T>%s", nPercentText, strResult)
+		elseif tObjective.nNeeded > 1 then
+			local nCompleted = queQuest:GetState() == Quest.QuestState_Completed and tObjective.nNeeded or tObjective.nCompleted
+			local nPercentText = String_GetWeaselString(Apollo.GetString("QuestTracker_ValueComplete"), nCompleted, tObjective.nNeeded)
+			strResult = string.format("<T Font=\"CRB_InterfaceMedium_B\" TextColor=\"ffffffff\">%s </T>%s", nPercentText, strResult)
 		end
 	end
 
 	return strResult
 end
 
+
 function BetterQuestLog:HelperBuildObjectiveProgBar(queQuest, tObjective, wndObjective, bComplete)
-	if tObjective.needed > 1 and queQuest:DisplayObjectiveProgressBar(tObjective.index) then
+	if tObjective.nNeeded > 1 and queQuest:DisplayObjectiveProgressBar(tObjective.index) then
 		local wndObjectiveProg = self:FactoryProduce(wndObjective, "QuestProgressItem", "QuestProgressItem")
-		local nCompleted = bComplete and tObjective.needed or tObjective.completed
-		local nNeeded = tObjective.needed
+		local nCompleted = bComplete and tObjective.nNeeded or tObjective.nCompleted
+		local nNeeded = tObjective.nNeeded
 		wndObjectiveProg:FindChild("QuestProgressBar"):SetMax(nNeeded)
 		wndObjectiveProg:FindChild("QuestProgressBar"):SetProgress(nCompleted)
 		wndObjectiveProg:FindChild("QuestProgressBar"):EnableGlow(nCompleted > 0 and nCompleted ~= nNeeded)
@@ -1419,7 +1439,7 @@ end
 function BetterQuestLog:FactoryProduce(wndParent, strFormName, strKey)
 	local wnd = self.arLeftTreeMap[strKey]
 	if not wnd or not wnd:IsValid() then
-		wnd = Apollo.LoadForm("BetterQuestLog.xml", strFormName, wndParent, self)
+		wnd = Apollo.LoadForm(self.xmlDoc, strFormName, wndParent, self)
 		wnd:SetData(strKey)
 		self.arLeftTreeMap[strKey] = wnd
 	end
