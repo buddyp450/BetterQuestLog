@@ -3,6 +3,8 @@
 -- Copyright (c) NCsoft. All rights reserved
 -----------------------------------------------------------------------------------------------
 
+-- octaviusprime on reddit/r/wildstar
+
 require "Window"
 require "Quest"
 require "QuestLib"
