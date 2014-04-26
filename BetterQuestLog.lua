@@ -3,6 +3,8 @@
 -- Copyright (c) NCsoft. All rights reserved
 -----------------------------------------------------------------------------------------------
 
+-- octanepenguin on reddit/r/wildstar
+
 require "Window"
 require "Quest"
 require "QuestLib"
@@ -535,7 +537,7 @@ function BetterQuestLog:RedrawLeftTree()
 	self:ResizeTree()
 end
 
-function BetterQuestLog:AddQuestToLog(wndCategory, queQuest)
+function BetterQuestLog:AddQuestToLog(wndCategory, queQuest)	
 	local eState = queQuest:GetState()
 	
 	-- only add this quest to our left tree if it matches a filter
@@ -554,9 +556,17 @@ function BetterQuestLog:AddQuestToLog(wndCategory, queQuest)
 		wndTop:FindChild("TopLevelBtn"):SetData(queQuest)
 		
 		-- change our title quest color
+		self.problemQuest = queQuest
 		local nDifficulty = queQuest:GetColoredDifficulty()
+		self.ktConToUIDebug = ktConToUI
 		local tConData = ktConToUI[nDifficulty]
-		wndTop:FindChild("TopLevelBtnText"):SetTextColor(tConData[2])
+		
+		-- Not sure why it's possible for the GetColoredDifficulty() to fail but it does when players
+		-- are zoning in and out of housing, it's something with a Quest update event firing for individual quests
+		-- apparently before the getter functions are ready (at least for difficulty)
+		if tConData ~= nil then
+			wndTop:FindChild("TopLevelBtnText"):SetTextColor(tConData[2])
+		end
 
 		-- TODO: incorporate that cool progress bar somehow in the new look and feel? hmmmm sounds smexy
 		--wndTop:FindChild("TopLevelProgBar"):SetMax(nMax)
@@ -893,7 +903,6 @@ function BetterQuestLog:DrawRightSide(queSelected)
 		wndRight:FindChild("QuestInfoObjectivesTitle"):SetText(Apollo.GetString("QuestLog_CompletedObjectives"))
 	elseif eQuestState ~= Quest.QuestState_Mentioned then
 		for key, tObjData in pairs(queSelected:GetVisibleObjectiveData()) do
-			self.myDebugForNow = tObjData
 			if tObjData.nCompleted < tObjData.nNeeded then
 				local wndObj = Apollo.LoadForm(self.xmlDoc, "ObjectivesItem", wndRight:FindChild("QuestInfoObjectivesList"), self)
 				wndObj:FindChild("ObjectivesItemText"):SetAML(self:HelperBuildObjectiveTitleString(queSelected, tObjData))
@@ -907,7 +916,6 @@ function BetterQuestLog:DrawRightSide(queSelected)
 	local tRewardInfo = queSelected:GetRewardData()
 	wndRight:FindChild("QuestInfoRewardRecList"):DestroyChildren()
 	for key, tReward in pairs(tRewardInfo.arFixedRewards) do
-		self.debugMore = self.xmlDoc
 		local wndReward = Apollo.LoadForm(self.xmlDoc, "RewardItem", wndRight:FindChild("QuestInfoRewardRecList"), self)
 		self:HelperBuildRewardsRec(wndReward, tReward, true)
 	end
@@ -1097,6 +1105,8 @@ end
 -----------------------------------------------------------------------------------------------
 
 function BetterQuestLog:OnQuestStateChanged(queUpdated, eState)
+	--Print(queUpdated:GetTitle() .. " was updated to state: " .. tostring(eState))
+
 	--Print("on quest state changed")
 	if type(eState) == "boolean" then
 		-- CODE ERROR! This is Quest Track Changed.
