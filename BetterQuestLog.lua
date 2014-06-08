@@ -22,6 +22,25 @@ local activeQuests = {} --table of only active quests (populated when generated)
 local needsRedraw = false
 local isDebugMode = false
 
+local log = {}
+
+---------------
+-- Logging (not using GeminiLogging)
+function log:error(msg)
+	Print('[ERROR] '..msg)
+end
+function log:warn(msg)
+	Print('[WARNING] '..msg)
+end
+function log:debug(msg)
+	if BetterQuestLog.isDebugMode then
+		Print('[DEBUG] '..msg)
+	end
+end
+function log:info(msg)
+	Print('[INFO] '..msg)
+end
+
 --[[ Quest States, For Reference:
 	QuestState_Unknown);
 	QuestState_Accepted);	-- 1
@@ -76,10 +95,10 @@ local ktConToUINoAlpha =
 
 local ktValidCallButtonStats =
 {
-	[Quest.QuestState_Ignored] 		= true,
+	[Quest.QuestState_Ignored] 			= true,
 	[Quest.QuestState_Achieved] 		= true,
 	[Quest.QuestState_Abandoned] 		= true,
-	[Quest.QuestState_Botched] 		= true,
+	[Quest.QuestState_Botched] 			= true,
 	[Quest.QuestState_Mentioned] 		= true,
 }
 
@@ -100,21 +119,33 @@ local karEvalColors =
 }
 
 function BetterQuestLog:OnLoad()
+	self.isDebugMode = false
+
 	self.xmlDoc = XmlDoc.CreateFromFile("BetterQuestLog.xml") -- BetterQuestLog will always be kept in memory, so save parsing it over and over
 	
-	Apollo.RegisterEventHandler("ShowQuestLog", 	 	 "Initialize", self)
-	Apollo.RegisterEventHandler("ShowQuestLog",		 "CheckIfNeedsRedraw", self)
-	Apollo.RegisterEventHandler("Dialog_QuestShare", 	 "OnDialog_QuestShare", self)
-	Apollo.RegisterEventHandler("Group_Join",		 "OnGroupJoin", self) -- for broadcasting upon joining a group
-	Apollo.RegisterEventHandler("Group_Remove",		 "OnGroupRemove", self)				-- ( name, reason )
-	Apollo.RegisterEventHandler("Group_Left",		 "OnGroupLeft", self)				-- ( reason )
-	Apollo.RegisterTimerHandler("ShareTimeout", 	 	 "OnShareTimeout", self)
-	Apollo.RegisterTimerHandler("OnLoadFinishedTimer",	 "BetterQuestLogLoaded", self)
-	Apollo.RegisterTimerHandler("ReRequestBroadcast", 	 "RequestGroupBroadcast", self)
-
-	self.isDebugMode = false
-	self.bqlChannel = ICCommLib.JoinChannel("BQLChannel", "OnBQLMessage", self)
+	Apollo.RegisterEventHandler("ShowQuestLog", 	 		"Initialize", self)
+	Apollo.RegisterEventHandler("ShowQuestLog",		 		"CheckIfNeedsRedraw", self)
+	Apollo.RegisterEventHandler("Dialog_QuestShare", 	 	"OnDialog_QuestShare", self)
 	
+	Apollo.RegisterEventHandler("Group_Join",		 		"OnGroupJoin", self) -- for broadcasting upon joining a group
+	Apollo.RegisterEventHandler("Group_Remove",		 		"OnGroupRemove", self)				-- ( name, reason )
+	Apollo.RegisterEventHandler("Group_Left",		 		"OnGroupLeft", self)				-- ( reason )
+	Apollo.RegisterEventHandler("Group_MemberFlagsChanged",	"OnPartyChange", self)		-- don't know what this is but it affects groups, update group
+	Apollo.RegisterEventHandler("Group_Updated",		 	"OnPartyChange", self)			-- don't know what this is but it affects groups, update group
+	Apollo.RegisterTimerHandler("ShareTimeout", 	 	 	"OnShareTimeout", self)
+	Apollo.RegisterTimerHandler("OnLoadFinishedTimer",	 	"BetterQuestLogLoaded", self)
+	Apollo.RegisterTimerHandler("ReRequestBroadcast", 	 	"RequestGroupBroadcast", self)
+	
+	-- these game events cause reloading group data (got this from OneJob)
+	--	self:RegisterBucketEvent(
+	--		{
+	--			"Group_Updated", 
+	--			"Group_Join", --done
+	--			"Group_Left",  --done
+	--			"Group_Remove",  --done
+	--			"Group_MemberFlagsChanged"
+	--		}, 5, "OnPartyChange")  --Whenever our party changes, change our BQL channel and rebroadcast
+
 	self.nQuestCountMax = QuestLib.GetMaxCount() -- we need this here for... something, figure it out --FIXME
 	
 	-- added a timer so that my broadcasting will work appropriately being called from OnLoad(thanks packetdancer!)
@@ -123,21 +154,61 @@ function BetterQuestLog:OnLoad()
 	Apollo.StartTimer("OnLoadFinishedTimer")
 end
 
-function BetterQuestLog:BetterQuestLogLoaded()
+function BetterQuestLog:OnPartyChange()
+	log:debug("OnPartyChange called")
+	self:JoinBQLChannel(); --reloads our bql channel to the appropriate one
+	self:RequestGroupBroadcast();
+	self:BroadcastActiveQuests();
+end
+
+-- Joins a channel particular to the current group leader
+function BetterQuestLog:JoinBQLChannel()
+	log:debug("JoinBQLChannel called")
+	local leader =	self:GetGroupLeader()
+	
+	if self.isDebugMode then
+		local playerName = GameLib.GetPlayerUnit():GetName()
+		log:debug("Joining channel for " .. playerName)
+		self.bqlChannel = ICCommLib.JoinChannel(playerName.."BQLChannel", "OnBQLMessage", self)
+	elseif leader then
+		log:debug("Joing channel for " .. leader.strCharacterName)
+		self.bqlChannel = ICCommLib.JoinChannel(leader.strCharacterName.."BQLChannel", "OnBQLMessage", self)
+	else
+		log:debug("bqlChannel set to nil")
+		self.bqlChannel = nil
+	end
+end
+
+function BetterQuestLog:GetGroupLeader()
+	local partySize = GroupLib.GetMemberCount()
+	for idx = 1, partySize do
+		local member = GroupLib.GetGroupMember(idx)
+		if member.bIsLeader then
+			return member
+		end
+	end	
+	return nil
+end
+
+function BetterQuestLog:BetterQuestLogLoaded()	
+	log:debug("BetterQuestLogLoaded called")
+	
+	--local Rover = Apollo.GetAddon("Rover")
+    --Rover:AddWatch("groupMembers", self.groupMembers)
+
 	if GameLib.GetPlayerUnit() == nil or GameLib.GetPlayerUnit():GetName() == nil then
-		--Print("GameLib.GetPlayer wasn't ready... waiting 3 seconds")
+		log:debug("GameLib.GetPlayer wasn't ready... waiting 3 seconds")
 		Apollo.CreateTimer("OnLoadFinishedTimer", 3, false)
 		Apollo.StartTimer("OnLoadFinishedtimer")
 	else
-		--Print("better quest log loaded")
+		log:debug("BetterQuestLog Loaded")
+		self:JoinBQLChannel()		
+
 		self:CreateActiveQuestsTable() -- not really happy with this atm
 		self:ObtainGroupMembers()
 		if self.isDebugMode or GroupLib.InGroup() or GroupLib.InRaid() then
-			--Print("detected I was already in a group")
 			self:BroadcastActiveQuests()
 			self:RequestGroupBroadcast()
-		--else
-			--Print("did nothing because i'm not in a group and debug is not on")
 		end
 	end
 end
@@ -151,6 +222,7 @@ end
 
 -- adds a player with the player name to our groupMember table if they don't exist already
 function BetterQuestLog:AddGroupMember(playerName)
+	log:debug("AddGroupMember - " .. playerName)
 	if playerName ~= GameLib.GetPlayerUnit():GetName() or self.isDebugMode then	
 		if self.groupMembers[playerName] == nil then
 			-- if they didn't, create them
@@ -163,13 +235,16 @@ end
 
 -- populate our group members table
 function BetterQuestLog:ObtainGroupMembers()
+	log:debug("ObtainGroupMembers")
 	self.groupMembers = {}
 	local nGroupMemberCount = GroupLib.GetMemberCount()
 	if nGroupMemberCount < 2 and not self.isDebugMode then
+		log:debug("Not in a group and not in debug mode so aborted group members table creation.")
 		return
 	end
 	
 	if self.isDebugMode then
+		log:debug("Adding self as a group member")
 		self:AddGroupMember(GameLib.GetPlayerUnit():GetName())
 	else
 		for i=1, nGroupMemberCount do
@@ -245,18 +320,19 @@ function BetterQuestLog:OnBQLMessage(channel, tMsg)
 	-- either way, neither matter if i'm not in a group
 	
 	--debug
-	if self.recCount == nil then
-		self.recCount = 0
+	if self.isDebugMode then
+		if self.recCount == nil then
+			self.recCount = 0
+		end
+	
+		if self.bqlRec == nil then
+			self.bqlRec = {}
+		end
+	
+		self.bqlRec[self.recCount] = tMsg
+		self.recCount = self.recCount + 1
 	end
-	
-	if self.bqlRec == nil then
-		self.bqlRec = {}
-	end
-	
-	self.bqlRec[self.recCount] = tMsg
-	self.recCount = self.recCount + 1
-	--inspect Apollo.GetAddon("BetterQuestLog").blah
-	
+			
 	local nGroupMemberCount = GroupLib.GetMemberCount()
 	if nGroupMemberCount < 2 and not self.isDebugMode then
 		return
@@ -325,10 +401,6 @@ function BetterQuestLog:CountInstancesOfQuestId(queId)
 		end
 	end
 	return num
-end
-
-function BetterQuestLog:OnQuestInit()
-	--Print("on quest init")
 end
 
 function BetterQuestLog:Initialize()
@@ -1161,30 +1233,35 @@ function BetterQuestLog:BroadcastUpdate(queUpdated)
 	
 	self.bqlChannel:SendMessage(msg) -- send it out!
 	
-	if self.sentCount == nil then
-		self.sentCount = 0
-	end
-	
-	if self.bqlSent == nil then
-		self.bqlSent = {}
-	end
-	
-	self.bqlSent[self.sentCount] = msg
-	self.bqlSent[self.sentCount].questName = queUpdated:GetTitle()
-	self.sentCount = self.sentCount + 1
-	
 	if self.isDebugMode then
-		self:OnBQLMessage(nil, msg)
+		if self.sentCount == nil then
+			self.sentCount = 0
+		end
+	
+		if self.bqlSent == nil then
+			self.bqlSent = {}
+		end
+	
+		self.bqlSent[self.sentCount] = msg
+		self.bqlSent[self.sentCount].questName = queUpdated:GetTitle()
+		self.sentCount = self.sentCount + 1
+	
+		if self.isDebugMode then
+			self:OnBQLMessage(nil, msg)
+		end
 	end
 end
 
 function BetterQuestLog:OnGroupLeft(reason) -- I left a group
-	--Print("I am no longer in a group, wiped out groupMembers table..")
+	self:OnPartyChange()
+	log:debug("OnGroupLeft called")
 	self.groupMembers = {} --wipe out
 	self:RedrawEverything()
 end
 
 function BetterQuestLog:OnGroupRemove(name, reason) --a member in my group was removed
+	self:OnPartyChange()
+	log:debug("OnGroupRemove called")
 	if self.groupMembers == nil then
 		return
 	end
@@ -1238,6 +1315,8 @@ function BetterQuestLog:RequestGroupBroadcast()
 end
 
 function BetterQuestLog:OnGroupJoin()	
+	self:OnPartyChange()
+	log:debug("OnGroupJoin called")
 	Apollo.CreateTimer("OnLoadFinishedTimer", 3, false)
 	Apollo.StartTimer("OnLoadFinishedTimer")
 	--self:BroadcastActiveQuests() -- I joined a group, broadcast my active quests
