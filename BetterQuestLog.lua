@@ -21,24 +21,23 @@ local groupMembers = {}
 local activeQuests = {} --table of only active quests (populated when generated)
 local needsRedraw = false
 local isDebugMode = false
+local isSoloMode = false
 
 local log = {}
 
 ---------------
 -- Logging (not using GeminiLogging)
 function log:error(msg)
-	Print('[ERROR] '..msg)
+	--Print('[ERROR] '..msg)
 end
 function log:warn(msg)
-	Print('[WARNING] '..msg)
+	--Print('[WARNING] '..msg)
 end
 function log:debug(msg)
-	if BetterQuestLog.isDebugMode then
-		Print('[DEBUG] '..msg)
-	end
+	--Print('[DEBUG] '..msg)
 end
 function log:info(msg)
-	Print('[INFO] '..msg)
+	--Print('[INFO] '..msg)
 end
 
 --[[ Quest States, For Reference:
@@ -120,21 +119,22 @@ local karEvalColors =
 
 function BetterQuestLog:OnLoad()
 	self.isDebugMode = false
+	self.isSoloMode = false
 
 	self.xmlDoc = XmlDoc.CreateFromFile("BetterQuestLog.xml") -- BetterQuestLog will always be kept in memory, so save parsing it over and over
 	
-	Apollo.RegisterEventHandler("ShowQuestLog", 	 		"Initialize", self)
-	Apollo.RegisterEventHandler("ShowQuestLog",		 		"CheckIfNeedsRedraw", self)
-	Apollo.RegisterEventHandler("Dialog_QuestShare", 	 	"OnDialog_QuestShare", self)
-	
-	Apollo.RegisterEventHandler("Group_Join",		 		"OnGroupJoin", self) -- for broadcasting upon joining a group
-	Apollo.RegisterEventHandler("Group_Remove",		 		"OnGroupRemove", self)				-- ( name, reason )
-	Apollo.RegisterEventHandler("Group_Left",		 		"OnGroupLeft", self)				-- ( reason )
-	Apollo.RegisterEventHandler("Group_MemberFlagsChanged",	"OnPartyChange", self)		-- don't know what this is but it affects groups, update group
-	Apollo.RegisterEventHandler("Group_Updated",		 	"OnPartyChange", self)			-- don't know what this is but it affects groups, update group
-	Apollo.RegisterTimerHandler("ShareTimeout", 	 	 	"OnShareTimeout", self)
-	Apollo.RegisterTimerHandler("OnLoadFinishedTimer",	 	"BetterQuestLogLoaded", self)
-	Apollo.RegisterTimerHandler("ReRequestBroadcast", 	 	"RequestGroupBroadcast", self)
+	Apollo.RegisterEventHandler("InterfaceMenuListHasLoaded", 	"OnInterfaceMenuListHasLoaded", self)	-- for codex entry at the bottom left
+	Apollo.RegisterEventHandler("ShowQuestLog", 	 			"Initialize", self)
+	Apollo.RegisterEventHandler("ShowQuestLog",		 			"CheckIfNeedsRedraw", self)
+	Apollo.RegisterEventHandler("Dialog_QuestShare", 	 		"OnDialog_QuestShare", self)
+	Apollo.RegisterEventHandler("Group_Join",		 			"OnGroupJoin", self) 			-- for broadcasting upon joining a group
+	Apollo.RegisterEventHandler("Group_Remove",		 			"OnGroupRemove", self)			-- ( name, reason )
+	Apollo.RegisterEventHandler("Group_Left",		 			"OnGroupLeft", self)			-- ( reason )
+	Apollo.RegisterEventHandler("Group_MemberPromoted",			"OnMemberPromotion", self)		-- whenever someone is promoted we need to update our bql channel
+	Apollo.RegisterTimerHandler("ShareTimeout", 	 	 		"OnShareTimeout", self)
+	Apollo.RegisterTimerHandler("OnLoadFinishedTimer",	 		"BetterQuestLogLoaded", self)
+	Apollo.RegisterTimerHandler("ReRequestBroadcast", 	 		"RequestGroupBroadcast", self)
+	Apollo.RegisterEventHandler("GenericEvent_ShowQuestLog",	"OnQuestLinkClicked", self)		-- probably happens under other circumstances that I'm not aware of
 	
 	-- these game events cause reloading group data (got this from OneJob)
 	--	self:RegisterBucketEvent(
@@ -154,19 +154,45 @@ function BetterQuestLog:OnLoad()
 	Apollo.StartTimer("OnLoadFinishedTimer")
 end
 
+function BetterQuestLog:OnInterfaceMenuListHasLoaded()
+	Event_FireGenericEvent("InterfaceMenuList_NewAddOn", "BetterQuestLog", {"ToggleQuestLog", "Codex", "Icon_Windows32_UI_CRB_InterfaceMenu_QuestLog"})
+end
+
+function BetterQuestLog:OnQuestLinkClicked(quest)
+	if not self.wndMain then
+		log:debug("could not find main window for linked quest")
+		return
+	end
+	
+	log:debug("showing linked quest")
+	
+	self.wndMain:FindChild("RightSide"):Show(true)
+	self.wndMain:FindChild("RightSide"):SetVScrollPos(0)
+	self.wndMain:FindChild("RightSide"):RecalculateContentExtents()
+	self.wndMain:FindChild("RightSide"):SetData(quest)
+	self:RedrawEverything()
+end
+
+-- whenever a member of our group is promoted, we update the channel we're communicating on
+function BetterQuestLog:OnMemberPromotion()
+	log:info("OnMemberPromotion")
+	self:JoinBQLChannel()
+end
+
 function BetterQuestLog:OnPartyChange()
-	log:debug("OnPartyChange called")
-	self:JoinBQLChannel(); --reloads our bql channel to the appropriate one
-	self:RequestGroupBroadcast();
-	self:BroadcastActiveQuests();
+	log:info("OnPartyChange called")
+	self:ObtainGroupMembers() 		-- obtain our current group members (rebuilds the groupMembers table)
+	self:JoinBQLChannel(); 			-- join the appropriate bql channel
+	self:RequestGroupBroadcast(); 	-- request and
+	self:BroadcastActiveQuests();	-- broadcast active quests
 end
 
 -- Joins a channel particular to the current group leader
 function BetterQuestLog:JoinBQLChannel()
-	log:debug("JoinBQLChannel called")
+	log:info("JoinBQLChannel called")
 	local leader =	self:GetGroupLeader()
 	
-	if self.isDebugMode then
+	if self.isSoloMode then
 		local playerName = GameLib.GetPlayerUnit():GetName()
 		log:debug("Joining channel for " .. playerName)
 		self.bqlChannel = ICCommLib.JoinChannel(playerName.."BQLChannel", "OnBQLMessage", self)
@@ -221,10 +247,16 @@ function BetterQuestLog:CheckIfNeedsRedraw()
 end
 
 -- adds a player with the player name to our groupMember table if they don't exist already
-function BetterQuestLog:AddGroupMember(playerName)
-	log:debug("AddGroupMember - " .. playerName)
+function BetterQuestLog:AddGroupMember(playerName)	
+	-- initialize if it didn't exist already for some reason?? (ideally i'd like to avoid this)
+	if self.groupMembers == nil then
+		log:debug("Group member did not have table destination, adding groupMembers table")
+		self.groupMembers = {}
+	end
+	
 	if playerName ~= GameLib.GetPlayerUnit():GetName() or self.isDebugMode then	
 		if self.groupMembers[playerName] == nil then
+			log:debug("AddGroupMember - " .. playerName)
 			-- if they didn't, create them
 			self.groupMembers[playerName] = {}
 			self.groupMembers[playerName].quests = {}
@@ -243,8 +275,7 @@ function BetterQuestLog:ObtainGroupMembers()
 		return
 	end
 	
-	if self.isDebugMode then
-		log:debug("Adding self as a group member")
+	if self.isSoloMode then
 		self:AddGroupMember(GameLib.GetPlayerUnit():GetName())
 	else
 		for i=1, nGroupMemberCount do
@@ -257,7 +288,6 @@ end
 function BetterQuestLog:CreateActiveQuestsTable()
 	-- here we simply iterate through every quest in the game <maybe?> and check if it's completed, horrible right? I'm not even
 	-- sure that's what happens exactly..
-	--Print("creating active quests table")
 	self.activeQuests = {} -- make sure nothing old is in here for when we repopulate it
 	for key, qcCategory in pairs(QuestLib.GetKnownCategories()) do
 		for key, epiEpisode in pairs(qcCategory:GetEpisodes()) do
@@ -273,7 +303,6 @@ end
 
 function BetterQuestLog:UpdateActiveQuestTable(queTarget)
 	local qTitle = queTarget:GetTitle()
-	--Print("Updating active quest table with.. " .. qTitle)
 	if self.activeQuests[qTitle] ~= nil then
 		local eState = queTarget:GetState()
 		if eState ~= Quest.QuestState_Completed and eState ~= Quest.QuestState_Abandoned and eState ~= Quest.QuestState_Ignored and eState ~= Quest.QuestState_Botched then
@@ -352,7 +381,6 @@ function BetterQuestLog:OnBQLMessage(channel, tMsg)
 	if tMsg.strEventName == "RequestBroadcast" and tMsg.strPlayerName == myName then
 		-- it was, share with the world my quest log
 		--this part confirmed working appropriately
-		--Print("my quest log was requested... broadcasting")
 		self:BroadcastActiveQuests()
 	--if the message wasn't a request for broadcast it was a QuestUpdated from someone else..
 	--check that they're in my group and update if so
@@ -550,7 +578,6 @@ function BetterQuestLog:RedrawFromUI()
 end
 
 function BetterQuestLog:RedrawEverything()
-	--Print("called redraw everything")
 	if not self.wndMain or not self.wndMain:IsValid() then
 		return
 	end
@@ -908,23 +935,33 @@ function BetterQuestLog:DrawRightSide(queSelected)
 
 	-- Episode Summary
 	local epiParent = queSelected:GetEpisode()	
-	local bIsTasks = epiParent:GetId() == 1
-	local tEpisodeProgress = epiParent:GetProgress()
-	local strEpisodeDesc = ""
-	if not bIsTasks then
-		if epiParent:GetState() == Episode.EpisodeState_Complete then
-			strEpisodeDesc = epiParent:GetSummary()
-		else
-			strEpisodeDesc = epiParent:GetDesc()
-		end
-	end
 	
-	wndRight:FindChild("EpisodeSummaryTitle"):SetText(self:HelperEpisodeSummaryText(epiParent:GetTitle(), false))
-	wndRight:FindChild("EpisodeSummaryTitle2"):SetText(self:HelperEpisodeSummaryText(epiParent:GetTitle(), true))
-	wndRight:FindChild("EpisodeSummaryProgText"):SetAML(string.format("<P Font=\"CRB_InterfaceSmall\" TextColor=\"ff31fcf6\" Align=\"Center\">"..
-	"(<T Font=\"CRB_InterfaceSmall\" TextColor=\"ffffb62e\" Align=\"Center\">%s</T>/%s)</P>", tEpisodeProgress.nCompleted, tEpisodeProgress.nTotal))
-	wndRight:FindChild("EpisodeSummaryPopoutText"):SetAML("<P Font=\"CRB_InterfaceMedium\" TextColor=\"ff2f94ac\">"..strEpisodeDesc.."</P>")
-
+	-- it's possible that we can't get the episode if our player doesn't have the episode
+	if epiParent ~= nil then
+		local bIsTasks = epiParent:GetId() == 1
+		local tEpisodeProgress = epiParent:GetProgress()
+		local strEpisodeDesc = ""
+		if not bIsTasks then
+			if epiParent:GetState() == Episode.EpisodeState_Complete then
+				strEpisodeDesc = epiParent:GetSummary()
+			else
+				strEpisodeDesc = epiParent:GetDesc()
+			end
+		end
+		
+		wndRight:FindChild("EpisodeSummaryTitle"):SetText(self:HelperEpisodeSummaryText(epiParent:GetTitle(), false))
+		wndRight:FindChild("EpisodeSummaryTitle2"):SetText(self:HelperEpisodeSummaryText(epiParent:GetTitle(), true))
+		wndRight:FindChild("EpisodeSummaryProgText"):SetAML(string.format("<P Font=\"CRB_InterfaceSmall\" TextColor=\"ff31fcf6\" Align=\"Center\">"..
+		"(<T Font=\"CRB_InterfaceSmall\" TextColor=\"ffffb62e\" Align=\"Center\">%s</T>/%s)</P>", tEpisodeProgress.nCompleted, tEpisodeProgress.nTotal))
+		wndRight:FindChild("EpisodeSummaryPopoutText"):SetAML("<P Font=\"CRB_InterfaceMedium\" TextColor=\"ff2f94ac\">"..strEpisodeDesc.."</P>")
+	else
+		wndRight:FindChild("EpisodeSummaryTitle"):SetText("")
+		wndRight:FindChild("EpisodeSummaryTitle2"):SetText("Someone Else's Episode")
+		wndRight:FindChild("EpisodeSummaryProgText"):SetAML(string.format("<P Font=\"CRB_InterfaceSmall\" TextColor=\"ff31fcf6\" Align=\"Center\">"..
+		"(<T Font=\"CRB_InterfaceSmall\" TextColor=\"ffffb62e\" Align=\"Center\">%s</T>/%s)</P>", 0, 0))
+		wndRight:FindChild("EpisodeSummaryPopoutText"):SetAML("<P Font=\"CRB_InterfaceMedium\" TextColor=\"ff2f94ac\">Could not get episode information due to this being a linked quest. If this quest was not linked, please let OctanePenguin know how you got to this point.</P>")
+	end
+		
 	-- More Info
 	local strMoreInfo = ""
 	local tMoreInfoText = queSelected:GetMoreInfoText()
@@ -1177,9 +1214,6 @@ end
 -----------------------------------------------------------------------------------------------
 
 function BetterQuestLog:OnQuestStateChanged(queUpdated, eState)
-	--Print(queUpdated:GetTitle() .. " was updated to state: " .. tostring(eState))
-
-	--Print("on quest state changed")
 	if type(eState) == "boolean" then
 		-- CODE ERROR! This is Quest Track Changed.
 		return
@@ -1217,7 +1251,18 @@ function BetterQuestLog:OnQuestStateChanged(queUpdated, eState)
 end
 
 function BetterQuestLog:BroadcastActiveQuests()
-	--Print("broadcasting my active quests")
+	if self.activeQuests == nil then
+		self:CreateActiveQuestsTable()
+	end
+	
+	if self.bqlChannel == nil then
+		self:JoinBQLChannel() -- give it another shot...
+		if self.bqlChannel == nil then
+			-- our best wasn't good enough, bail since we can't find a channel (leader)
+			return
+		end
+	end
+	
 	for key, quest in pairs(self.activeQuests) do
 		self:BroadcastUpdate(quest)
 	end
@@ -1225,6 +1270,12 @@ end
 
 -- broadcasts to anyone listening for BQL that i have had a quest update
 function BetterQuestLog:BroadcastUpdate(queUpdated)
+
+	-- can't broadcast jack if we don't have a channel to broadcast to
+	if self.bqlChannel == nil then
+		return
+	end
+
 	local msg = {}
 	msg.strPlayerName = GameLib.GetPlayerUnit():GetName() -- that's me
 	msg.strEventName = "QuestUpdated" -- had a quest update
@@ -1246,41 +1297,36 @@ function BetterQuestLog:BroadcastUpdate(queUpdated)
 		self.bqlSent[self.sentCount].questName = queUpdated:GetTitle()
 		self.sentCount = self.sentCount + 1
 	
-		if self.isDebugMode then
+		if self.isSoloMode then
 			self:OnBQLMessage(nil, msg)
 		end
 	end
 end
 
 function BetterQuestLog:OnGroupLeft(reason) -- I left a group
-	self:OnPartyChange()
 	log:debug("OnGroupLeft called")
-	self.groupMembers = {} --wipe out
+	self:OnPartyChange()
 	self:RedrawEverything()
 end
 
 function BetterQuestLog:OnGroupRemove(name, reason) --a member in my group was removed
-	self:OnPartyChange()
 	log:debug("OnGroupRemove called")
-	if self.groupMembers == nil then
-		return
-	end
-	
-	for key, member in pairs(self.groupMembers) do
-		if member.strPlayerName == name then
-			--Print("player " .. name .. " was removed from group, removing from table")
-			self.groupMembers[name] = nil
-			break
-		end
-	end
+	self:OnPartyChange()
 	self:RedrawEverything()
 end
 
 -- Requests a broadcast of each group member's active quest log to populate our groupMembers table through OnBQLMessage
 function BetterQuestLog:RequestGroupBroadcast()
---FIXME: i'm able to call this in-game before it's initialized and it works, but it doesn't just work on it's own??? wtf
+	--FIXME: i'm able to call this in-game before it's initialized and it works, but it doesn't just work on it's own??? wtf
+	log:debug("RequestGroupBroadcast")
+	if self.bqlChannel == nil then
+		log:debug("Was going to request broadcast but bqlChannel was nil, this is due to not finding a leader for the group")
+		return
+	end
+	
 	local nMembers = GroupLib.GetMemberCount()
 	local myName = GameLib.GetPlayerUnit():GetName()
+	
 	if nMembers > 0 then
 		local msg = {}
 		msg.strEventName = "RequestBroadcast"
@@ -1291,11 +1337,10 @@ function BetterQuestLog:RequestGroupBroadcast()
 				local result = self.bqlChannel:SendMessage(msg)
 				-- workaround for not being able to tell when i'm ready to send a message
 				if result == false then
+					log:debug("ReRequesting Broadcast")
 					Apollo.CreateTimer("ReRequestBroadcast", 1, false)
 					Apollo.StartTimer("ReRequestBroadcast")
 					break
-				--else
-					--Print("requested broadcast from: " .. msg.strPlayerName)
 				end
 				
 				if self.sentCount == nil then
@@ -1315,8 +1360,8 @@ function BetterQuestLog:RequestGroupBroadcast()
 end
 
 function BetterQuestLog:OnGroupJoin()	
-	self:OnPartyChange()
 	log:debug("OnGroupJoin called")
+	self:OnPartyChange()
 	Apollo.CreateTimer("OnLoadFinishedTimer", 3, false)
 	Apollo.StartTimer("OnLoadFinishedTimer")
 	--self:BroadcastActiveQuests() -- I joined a group, broadcast my active quests
@@ -1324,7 +1369,6 @@ function BetterQuestLog:OnGroupJoin()
 end
 
 function BetterQuestLog:OnQuestObjectiveUpdated(queUpdated)
-	--Print("On quest objective updated")
 	local queCurrent = self.wndMain:FindChild("RightSide"):GetData()
 	
 	-- only broadcast updates if we're in a group
