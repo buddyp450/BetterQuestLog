@@ -23,6 +23,7 @@ local needsRedraw = false
 local isDebugMode = false
 local isSoloMode = false
 local myPlayerName = nil
+local tSavedData = nil
 
 local log = {}
 
@@ -218,16 +219,13 @@ end
 
 function BetterQuestLog:BetterQuestLogLoaded()	
 	log:debug("BetterQuestLogLoaded called")
-	
-	--local Rover = Apollo.GetAddon("Rover")
-    --Rover:AddWatch("groupMembers", self.groupMembers)
 
 	-- our player name is very important to a lot of different pieces, wait for us to be able to determine this b4 proceeding
 	if GameLib.GetPlayerUnit() == nil or GameLib.GetPlayerUnit():GetName() == nil then
 		log:debug("GameLib.GetPlayer wasn't ready... waiting 3 seconds")
 		Apollo.CreateTimer("OnLoadFinishedTimer", 3, false)
 		Apollo.StartTimer("OnLoadFinishedtimer")
-	else
+	else		
 		log:debug("BetterQuestLog Loaded")
 		myPlayerName = GameLib:GetPlayerUnit():GetName() -- our player unit is very transient, store the name we commonly use so we don't run into problems
 		self:JoinBQLChannel()		
@@ -581,6 +579,10 @@ function BetterQuestLog:RedrawEverything()
 	if not self.wndMain or not self.wndMain:IsValid() then
 		return
 	end
+	
+	if self.tSavedData ~= nil then
+		self.wndMain:FindChild("ShowLevelCheckboxBtn"):SetCheck(self.tSavedData.showLevel)
+	end
 
 	self:RedrawLeftTree()
 	local bLeftSideHasResults = #self.wndMain:FindChild("LeftSideScroll"):GetChildren() ~= 0
@@ -768,6 +770,17 @@ end
 
 function BetterQuestLog:ResizeTree()
 	for key, wndCategory in pairs(self.wndMain:FindChild("LeftSideScroll"):GetChildren()) do
+		if self.tSavedData ~= nil then
+			--local Rover = Apollo.GetAddon("Rover")
+			--Rover:AddWatch("wtf", wndCategory:GetText())
+			local label = wndCategory:FindChild("PreviousTopLevelBtnText"):GetText()
+			if self.tSavedData.expanded[label] ~= nil then
+				wndCategory:FindChild("PreviousTopLevelBtn"):SetCheck(true)
+				self.tSavedData.expanded[label] = nil -- only preserves first opening
+			end
+		end
+	
+	
 		if not wndCategory:FindChild("PreviousTopLevelBtn"):IsChecked() then
 			wndCategory:FindChild("PreviousTopLevelItems"):DestroyChildren()
 		end
@@ -1631,6 +1644,37 @@ function BetterQuestLog:CheckTrackedToggle( wndHandler, wndControl, eMouseButton
 	self:RedrawEverything()
 end
 
+--------------------- Saving / Restoring Data --------------------------
+
+function BetterQuestLog:OnSave(eLevel)
+	--log:info('on save called')
+	-- eLevel is some sort of addon save level
+	-- in this example we only care about saving at the character level apparently
+	if eLevel ~= GameLib.CodeEnumAddonSaveLevel.Character then
+		return nil
+	end
+	
+	-- create a table to hold our data
+	local tSave = {}
+	tSave.showLevel = self.wndMain:FindChild("ShowLevelCheckboxBtn"):IsChecked()
+	tSave.expanded = {}
+	
+	-- iterate and figure out which elements are expanded and which ones are not
+	for key, wndCategory in pairs(self.wndMain:FindChild("LeftSideScroll"):GetChildren()) do
+		if wndCategory:FindChild("PreviousTopLevelBtn"):IsChecked() then
+			local label = wndCategory:FindChild("PreviousTopLevelBtnText"):GetText()
+			tSave.expanded[label] = true
+		end
+		wndCategory:FindChild("PreviousTopLevelBtn"):SetCheck(false) -- changes the expanded property
+	end
+	
+	return tSave		
+end
+
+function BetterQuestLog:OnRestore(eLevel, tData)
+	-- just store this and use it later
+	self.tSavedData = tData
+end
 
 local BetterQuestLogInst = BetterQuestLog:new()
 BetterQuestLogInst:Init()
