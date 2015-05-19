@@ -14,6 +14,7 @@ require "Episode"
 require "GameLib"
 require "Money"
 require "GroupLib"
+require "ICComm"
 
 local BetterQuestLog = {}
 local lastSelected = nil
@@ -24,6 +25,8 @@ local isDebugMode = false
 local isSoloMode = false
 local myPlayerName = nil
 local tSavedData = nil
+
+local JSON = Apollo.GetPackage("Lib:dkJSON-2.5").tPackage
 
 local log = {}
 
@@ -124,24 +127,25 @@ function BetterQuestLog:OnLoad()
 	self.isSoloMode = false
 
 	self.xmlDoc = XmlDoc.CreateFromFile("BetterQuestLog.xml") -- BetterQuestLog will always be kept in memory, so save parsing it over and over
-	
+
 	Apollo.RegisterEventHandler("InterfaceMenuListHasLoaded", 	"OnInterfaceMenuListHasLoaded", self)	-- for codex entry at the bottom left
-	Apollo.RegisterEventHandler("ShowQuestLog", 	 			"Initialize", self)
-	Apollo.RegisterEventHandler("ShowQuestLog",		 			"CheckIfNeedsRedraw", self)
-	Apollo.RegisterEventHandler("Dialog_QuestShare", 	 		"OnDialog_QuestShare", self)
-	Apollo.RegisterEventHandler("Group_Join",		 			"OnGroupJoin", self) 			-- for broadcasting upon joining a group
-	Apollo.RegisterEventHandler("Group_Remove",		 			"OnGroupRemove", self)			-- ( name, reason )
-	Apollo.RegisterEventHandler("Group_Left",		 			"OnGroupLeft", self)			-- ( reason )
-	Apollo.RegisterEventHandler("Group_MemberPromoted",			"OnMemberPromotion", self)		-- whenever someone is promoted we need to update our bql channel
-	Apollo.RegisterTimerHandler("ShareTimeout", 	 	 		"OnShareTimeout", self)
-	Apollo.RegisterTimerHandler("OnLoadFinishedTimer",	 		"BetterQuestLogLoaded", self)
-	Apollo.RegisterTimerHandler("ReRequestBroadcast", 	 		"RequestGroupBroadcast", self)
+	Apollo.RegisterEventHandler("ShowQuestLog", 	 			      "Initialize", self)
+	Apollo.RegisterEventHandler("ShowQuestLog",		 			      "CheckIfNeedsRedraw", self)
+	Apollo.RegisterEventHandler("Dialog_QuestShare", 	 		    "OnDialog_QuestShare", self)
+	Apollo.RegisterEventHandler("Group_Join",		 			        "OnGroupJoin", self) 			-- for broadcasting upon joining a group
+	Apollo.RegisterEventHandler("Group_Remove",		 			      "OnGroupRemove", self)			-- ( name, reason )
+	Apollo.RegisterEventHandler("Group_Left",		 			        "OnGroupLeft", self)			-- ( reason )
+	Apollo.RegisterEventHandler("Group_MemberPromoted",			  "OnMemberPromotion", self)		-- whenever someone is promoted we need to update our bql channel
+	Apollo.RegisterTimerHandler("ShareTimeout", 	 	 		      "OnShareTimeout", self)
+	Apollo.RegisterTimerHandler("OnLoadFinishedTimer",	 		  "BetterQuestLogLoaded", self)
+	Apollo.RegisterTimerHandler("ReRequestBroadcast", 	 		  "RequestGroupBroadcast", self)
 	Apollo.RegisterEventHandler("GenericEvent_ShowQuestLog",	"OnQuestLinkClicked", self)		-- probably happens under other circumstances that I'm not aware of
-	
+  Apollo.RegisterEventHandler("JoinResultEvent",            "OnChannelJoined", self)
+
 	-- these game events cause reloading group data (got this from OneJob)
 	--	self:RegisterBucketEvent(
 	--		{
-	--			"Group_Updated", 
+	--			"Group_Updated",
 	--			"Group_Join", --done
 	--			"Group_Left",  --done
 	--			"Group_Remove",  --done
@@ -149,11 +153,15 @@ function BetterQuestLog:OnLoad()
 	--		}, 5, "OnPartyChange")  --Whenever our party changes, change our BQL channel and rebroadcast
 
 	self.nQuestCountMax = QuestLib.GetMaxCount() -- we need this here for... something, figure it out --FIXME
-	
+
 	-- added a timer so that my broadcasting will work appropriately being called from OnLoad(thanks packetdancer!)
 	-- we needed to wait for onload to finish
 	Apollo.CreateTimer("OnLoadFinishedTimer", 3, false)
 	Apollo.StartTimer("OnLoadFinishedTimer")
+end
+
+function BetterQuestLog:JoinResultEvent(iccomm, eResult)
+  self.bqlChannel = iccomm
 end
 
 function BetterQuestLog:OnInterfaceMenuListHasLoaded()
@@ -165,9 +173,9 @@ function BetterQuestLog:OnQuestLinkClicked(quest)
 		log:debug("could not find main window for linked quest")
 		return
 	end
-	
+
 	log:debug("showing linked quest")
-	
+
 	self.wndMain:FindChild("RightSide"):Show(true)
 	self.wndMain:FindChild("RightSide"):SetVScrollPos(0)
 	self.wndMain:FindChild("RightSide"):RecalculateContentExtents()
@@ -193,17 +201,26 @@ end
 function BetterQuestLog:JoinBQLChannel()
 	log:info("JoinBQLChannel called")
 	local leader =	self:GetGroupLeader()
-	
+
 	if self.isSoloMode then
 		log:debug("Joining channel for " .. myPlayerName)
-		self.bqlChannel = ICCommLib.JoinChannel(myPlayerName.."BQLChannel", "OnBQLMessage", self)
+    self:JoinChannel(myPlayerName)
+		ICCommLib.JoinChannel(myPlayerName.."BQLChannel", ICCommLib.CodeEnumICCommChannelType.Group) -- call back OnBqlMessage
 	elseif leader then
 		log:debug("Joing channel for " .. leader.strCharacterName)
-		self.bqlChannel = ICCommLib.JoinChannel(leader.strCharacterName.."BQLChannel", "OnBQLMessage", self)
+    self:JoinChannel(leader.strCharacterName)
+		ICCommLib.JoinChannel(leader.strCharacterName.."BQLChannel", ICCommLib.CodeEnumICCommChannelType.Group) -- call back OnBqlMessage
 	else
 		log:debug("bqlChannel set to nil")
 		self.bqlChannel = nil
 	end
+end
+
+function BetterQuestLog:JoinChannel(prefix)
+  self.bqlChannel = ICCommLib.JoinChannel(prefix.."BQLChannel", ICCommLib.CodeEnumICCommChannelType.Group)
+  self.bqlChannel:SetJoinResultFunction("JoinResultEvent", self)
+  self.bqlChannel:IsReady()
+  self.bqlChannel:SetReceivedMessageFunction("OnBQLMessage", self)
 end
 
 function BetterQuestLog:GetGroupLeader()
@@ -213,11 +230,11 @@ function BetterQuestLog:GetGroupLeader()
 		if member.bIsLeader then
 			return member
 		end
-	end	
+	end
 	return nil
 end
 
-function BetterQuestLog:BetterQuestLogLoaded()	
+function BetterQuestLog:BetterQuestLogLoaded()
 	log:debug("BetterQuestLogLoaded called")
 
 	-- our player name is very important to a lot of different pieces, wait for us to be able to determine this b4 proceeding
@@ -225,10 +242,10 @@ function BetterQuestLog:BetterQuestLogLoaded()
 		log:debug("GameLib.GetPlayer wasn't ready... waiting 3 seconds")
 		Apollo.CreateTimer("OnLoadFinishedTimer", 3, false)
 		Apollo.StartTimer("OnLoadFinishedtimer")
-	else		
+	else
 		log:debug("BetterQuestLog Loaded")
 		myPlayerName = GameLib:GetPlayerUnit():GetName() -- our player unit is very transient, store the name we commonly use so we don't run into problems
-		self:JoinBQLChannel()		
+		self:JoinBQLChannel()
 		self:CreateActiveQuestsTable() -- not really happy with this atm
 		self:ObtainGroupMembers()
 		if self.isDebugMode or GroupLib.InGroup() or GroupLib.InRaid() then
@@ -246,14 +263,14 @@ function BetterQuestLog:CheckIfNeedsRedraw()
 end
 
 -- adds a player with the player name to our groupMember table if they don't exist already
-function BetterQuestLog:AddGroupMember(playerName)	
+function BetterQuestLog:AddGroupMember(playerName)
 	-- initialize if it didn't exist already for some reason?? (ideally i'd like to avoid this)
 	if self.groupMembers == nil then
 		log:debug("Group member did not have table destination, adding groupMembers table")
 		self.groupMembers = {}
 	end
-	
-	if playerName ~= myPlayerName or self.isDebugMode then	
+
+	if playerName ~= myPlayerName or self.isDebugMode then
 		if self.groupMembers[playerName] == nil then
 			log:debug("AddGroupMember - " .. playerName)
 			-- if they didn't, create them
@@ -273,13 +290,13 @@ function BetterQuestLog:ObtainGroupMembers()
 		log:debug("Not in a group and not in debug mode so aborted group members table creation.")
 		return
 	end
-	
+
 	if self.isSoloMode then
 		self:AddGroupMember(myPlayerName)
 	else
 		for i=1, nGroupMemberCount do
 			self:AddGroupMember(GroupLib.GetGroupMember(i).strCharacterName)
-		end	
+		end
 	end
 end
 
@@ -291,7 +308,7 @@ function BetterQuestLog:CreateActiveQuestsTable()
 	for key, qcCategory in pairs(QuestLib.GetKnownCategories()) do
 		for key, epiEpisode in pairs(qcCategory:GetEpisodes()) do
 			for key, queQuest in pairs(epiEpisode:GetAllQuests(qcCategory:GetId())) do
-				local eState = queQuest:GetState()	
+				local eState = queQuest:GetState()
 				if eState ~= Quest.QuestState_Completed and eState ~= Quest.QuestState_Abandoned and eState ~= Quest.QuestState_Ignored and eState ~= Quest.QuestState_Botched then
 					self.activeQuests[queQuest:GetTitle()] = queQuest
 				end
@@ -326,7 +343,7 @@ function BetterQuestLog:IsGroupMemberMessage(tMsg)
 	if not GroupLib.InGroup() and not GroupLib.InRaid() then
 		return false -- that was easy, I have no group
 	end
-		
+
 	-- as we iterate through our group members, as soon as we hit one match, we know it's a group message
 	-- and that's all we care about here
 	local nGroupMemberCount = GroupLib.GetMemberCount()
@@ -338,7 +355,7 @@ function BetterQuestLog:IsGroupMemberMessage(tMsg)
 			end
 		end
 	end
-	
+
 	return false
 end
 
@@ -346,26 +363,26 @@ end
 function BetterQuestLog:OnBQLMessage(channel, tMsg)
 	-- two things happen here, i can receive an update, or i can receive a request for a full broadcast
 	-- either way, neither matter if i'm not in a group
-	
+
 	--debug
 	if self.isDebugMode then
 		if self.recCount == nil then
 			self.recCount = 0
 		end
-	
+
 		if self.bqlRec == nil then
 			self.bqlRec = {}
 		end
-	
+
 		self.bqlRec[self.recCount] = tMsg
 		self.recCount = self.recCount + 1
 	end
-			
+
 	local nGroupMemberCount = GroupLib.GetMemberCount()
 	if nGroupMemberCount < 2 and not self.isDebugMode then
 		return
 	end
-	
+
 	-- now that i know i'm in a group, let's start by making sure that the event name exists and is included
 	if type(tMsg.strEventName) ~= "string" then
 		-- if not let's just let this one go, nothing should cause this to happen atm besides my own stupidity
@@ -374,7 +391,7 @@ function BetterQuestLog:OnBQLMessage(channel, tMsg)
 		eventNameNotAString()
 		return
 	end
-	
+
 	-- check if this message was for me to broadcast
 	if tMsg.strEventName == "RequestBroadcast" and tMsg.strPlayerName == myPlayerName then
 		-- it was, share with the world my quest log
@@ -382,12 +399,12 @@ function BetterQuestLog:OnBQLMessage(channel, tMsg)
 		self:BroadcastActiveQuests()
 	--if the message wasn't a request for broadcast it was a QuestUpdated from someone else..
 	--check that they're in my group and update if so
-	elseif tMsg.strEventName == "QuestUpdated" and self:IsGroupMemberMessage(tMsg) then 
+	elseif tMsg.strEventName == "QuestUpdated" and self:IsGroupMemberMessage(tMsg) then
 		self:AddGroupMember(tMsg.strPlayerName) -- won't add if it already exists
 		-- store the information we received in our table (overwriting any previous)
 		self.groupMembers[tMsg.strPlayerName].quests[tMsg.strQuestId] = tMsg.eQuestState
 		-- todo: handle the drawing of the update wherever we actually draw, not here
-		
+
 		-- we updated so flag us for a redraw
 		-- using a timer so that if the quest log is open, it will still update after a couple seconds
 		-- this is so that we don't have to call a RedrawEverything for EVERY SINGLE update message we receive
@@ -417,7 +434,7 @@ function BetterQuestLog:CountInstancesOfQuestId(queId)
 	local num = 0
 	if self.groupMembers == nil then
 		return 0
-	end	
+	end
 	for key, member in pairs(self.groupMembers) do
 		local eQuestState = member.quests[queId]
 		if eQuestState ~= nil then --this quest existed in the player's log
@@ -433,7 +450,7 @@ function BetterQuestLog:Initialize()
 	if (self.wndMain and self.wndMain:IsValid()) or not g_wndProgressLog then
 		return
 	end
-	
+
 	--Apollo.RegisterEventHandler("EpisodeStateChanged", 			"DestroyAndRedraw", self) -- Not sure if this can be made stricter
 	Apollo.RegisterEventHandler("EpisodeStateChanged",			"RedrawEverything", self)
 	Apollo.RegisterEventHandler("QuestStateChanged", 			"OnQuestStateChanged", self) -- Routes to OnDestroyQuestObject if completed/botched
@@ -475,9 +492,9 @@ function BetterQuestLog:Initialize()
 	self.knRewardChoListHeight = self.wndMain:FindChild("QuestInfoRewardChoFrame"):GetHeight()
 --	self.knMoreInfoHeight = self.wndMain:FindChild("QuestInfoMoreInfoFrame"):GetHeight()
 	self.knMoreInfoHeight = self.wndMain:FindChild("QuestInfoMoreInfoText"):GetHeight()
-	
+
 	self.knEpisodeInfoHeight = self.wndMain:FindChild("EpisodeInfo"):GetHeight()
-	
+
 	--self:DestroyAndRedraw()
 	self:RedrawEverything()
 end
@@ -486,16 +503,16 @@ function BetterQuestLog:OnGenericEvent_ShowQuestLog(queTarget)
 	if not self.wndMain or not self.wndMain:IsValid() then
 		self:Initialize()
 	end
-	
+
 	self.wndMain:FindChild("LeftSideFilterBtnShowActive"):SetCheck(true)
 	self.wndMain:FindChild("LeftSideFilterBtnShowHidden"):SetCheck(false)
-	self.wndMain:FindChild("LeftSideFilterBtnShowFinished"):SetCheck(false)	
+	self.wndMain:FindChild("LeftSideFilterBtnShowFinished"):SetCheck(false)
 	self.wndMain:FindChild("LeftSideScroll"):DestroyChildren()
 	self:RedrawEverything()
-	
+
 	local qcTop = queTarget:GetCategory()
 	--local epiMid = queTarget:GetEpisode()
-	
+
 	local strCategoryKey = "C"..qcTop:GetId()
 	local wndCategory = self.wndMain:FindChild("LeftSideScroll"):FindChildByUserData(strCategoryKey)
 	if wndCategory then
@@ -508,7 +525,7 @@ function BetterQuestLog:OnGenericEvent_ShowQuestLog(queTarget)
 		--local strQuestKey = strEpisodeKey.."Q"..queTarget:GetId()
 		strQuestKey = "Q"..queTarget:GetId()
 		--local wndBot = wndMiddle:FindChild("MiddleLevelItems"):FindChildByUserData(strQuestKey)
-		
+
 		wndQuest = wndCategory:FindChild("PreviousTopLevelItems"):FindChildByUserData(strQuestKey)
 		--local bAllFiltersParsed = false
 		--while not wndQuest and not bAllFiltersParsed do
@@ -526,9 +543,9 @@ function BetterQuestLog:OnGenericEvent_ShowQuestLog(queTarget)
 			--wndQuest = wndCategory:FindChild("PreviousTopLevelItems"):FindChildByUserData(strQuestKey)
 		--end
 		--TOOOOOO SLOOOOWWW
-		
+
 		--wndCategory:FindChild("PreviousTopLevelBtn"):SetText(wndQuest)
-		
+
 		if wndQuest then
 			local wndTop = wndQuest:FindChild("TopLevelBtn")
 			self:CheckTrackedToggle(wndTop, wndTop)
@@ -559,7 +576,7 @@ function BetterQuestLog:DestroyAndRedraw() -- TODO, remove as much as possible t
 	--if wndCategory then
 		--wndCategory :FindChild("PreviousTopLevelBtn"):SetCheck(true)
 		--self:RedrawLeftTree()
---		
+--
 		--local wndTop = wndCategory:FindChild("PreviousTopLevelItems"):GetChildren()[1]
 		--if wndTop then
 --			self:CheckTrackedToggle(wndTop, wndTop, 0)
@@ -579,7 +596,7 @@ function BetterQuestLog:RedrawEverything()
 	if not self.wndMain or not self.wndMain:IsValid() then
 		return
 	end
-	
+
 	if self.tSavedData ~= nil then
 		self.wndMain:FindChild("ShowLevelCheckboxBtn"):SetCheck(self.tSavedData.showLevel)
 	end
@@ -609,13 +626,13 @@ function BetterQuestLog:RedrawLeftTree()
 	elseif nQuestCount + 10 >= self.nQuestCountMax then
 		strColor = "ffffb62e"
 	end
-	
+
 	local filterShowActive = self.wndMain:FindChild("LeftSideFilterBtnShowActive")
-	
+
 	local strActiveQuests = string.format("<T TextColor=\"%s\">%s</T>", strColor, nQuestCount)
 	strActiveQuests = String_GetWeaselString(Apollo.GetString("QuestLog_ActiveQuests"), strActiveQuests, self.nQuestCountMax)
 	self.wndMain:FindChild("QuestLogCountText"):SetAML(string.format("<P Font=\"CRB_InterfaceSmall_O\" Align=\"Center\" TextColor=\"ff2f94ac\">%s</P>", strActiveQuests))
-	
+
 	local bFilteringFinished = self:IsFilteringAsFinished()
 	for key, qcCategory in pairs(QuestLib.GetKnownCategories()) do
 		local strCategoryKey = "C"..qcCategory:GetId()
@@ -628,40 +645,40 @@ function BetterQuestLog:RedrawLeftTree()
 			local bHasCompletedQuest = false
 			for key, queQuest in pairs(epiEpisode:GetAllQuests(qcCategory:GetId())) do -- Note there's also GetVisible/GetTracked
 				self:AddQuestToLog(wndCategory, queQuest)
-			end			
+			end
 		end
-		
+
 		if #wndCategory:FindChild("PreviousTopLevelItems"):GetChildren() == 0 then -- Todo Refactor
 			wndCategory:Destroy()
 		end
-	end	
+	end
 	self:ResizeTree()
 end
 
-function BetterQuestLog:AddQuestToLog(wndCategory, queQuest)	
+function BetterQuestLog:AddQuestToLog(wndCategory, queQuest)
 	local eState = queQuest:GetState()
-	
+
 	-- only add this quest to our left tree if it matches a filter
 	if (self:IsFilteringAsActive() and eState ~= Quest.QuestState_Completed and not queQuest:IsIgnored() and eState ~= Quest.QuestState_Abandoned)
 	or (self:IsFilteringAsFinished() and eState == Quest.QuestState_Completed)
 	or (self:IsFilteringAsHidden() and (queQuest:IsIgnored() or eState == Quest.QuestState_Abandoned)) then
 		--local strQuestKey = "C"..qcCategory:GetId().."E"..epiEpisode:GetId().."Q"..queQuest:GetId() --old id format
 		local strQuestKey = "Q"..queQuest:GetId()
-		
+
 		-- TODO: this would be a MUCH better way to fill our activeQuests table...
-		--if self:IsFilteringAsActive() then 
-			--activeQuests[strQuestKey] = queQuest 
+		--if self:IsFilteringAsActive() then
+			--activeQuests[strQuestKey] = queQuest
 		--end
-		
+
 		local wndTop = self:FactoryProduce(wndCategory:FindChild("PreviousTopLevelItems"), "TopLevelItem", strQuestKey)
 		wndTop:FindChild("TopLevelBtn"):SetData(queQuest)
-		
+
 		-- change our title quest color
 		self.problemQuest = queQuest
 		local nDifficulty = queQuest:GetColoredDifficulty()
 		self.ktConToUIDebug = ktConToUI
 		local tConData = ktConToUI[nDifficulty]
-		
+
 		-- Not sure why it's possible for the GetColoredDifficulty() to fail but it does when players
 		-- are zoning in and out of housing, it's something with a Quest update event firing for individual quests
 		-- apparently before the getter functions are ready (at least for difficulty)
@@ -676,7 +693,7 @@ function BetterQuestLog:AddQuestToLog(wndCategory, queQuest)
 		-- store the bottom level icon sprite and whether or not it has a call associated with it
 		local strBottomLevelIconSprite = ""
 		local bHasCall = queQuest:GetContactInfo()
-	
+
 		-- set the icon based on the enum state of the quest
 		local statusText = "" --fixme: localize
 		if eState == Quest.QuestState_Botched then
@@ -689,8 +706,8 @@ function BetterQuestLog:AddQuestToLog(wndCategory, queQuest)
 		elseif (eState == Quest.QuestState_Achieved or eState == Quest.QuestState_Completed)and not bHasCall then
 			bHasCompletedQuest = true
 			statusText = "(Complete)"
-		end	
-			
+		end
+
 		if queQuest:IsTracked() then
 			--strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Holo_HazardProximity"
 			strBottomLevelIconSprite = "CRB_Basekit:kitIcon_Holo_Checkmark"
@@ -706,14 +723,14 @@ function BetterQuestLog:AddQuestToLog(wndCategory, queQuest)
 		local title = queQuest:GetTitle()
 		local totalText = nil
 		local queLvlText = nil
-		
+
 		local wndShowLevelBtn = self.wndMain:FindChild("ShowLevelCheckboxBtn")
-		
+
 		local count = self:CountInstancesOfQuestId(queQuest:GetId())
-		
+
 		if wndShowLevelBtn:IsChecked() then
 			queLvlText = "["..queQuest:GetConLevel().."]"
-			
+
 			if count > 0 then
 				totalText = "(" .. count .. ") "..queLvlText .. " " .. title .. " " .. statusText
 			else
@@ -726,7 +743,7 @@ function BetterQuestLog:AddQuestToLog(wndCategory, queQuest)
 				totalText = title .. " " .. statusText
 			end
 		end
-		
+
 		--keep shortening until it fits, admittedly lazy and expensive approach to sizing
 		--TODO: refactor
 		while Apollo.GetTextWidth("CRB_InterfaceMedium", totalText) > wndTop:FindChild("TopLevelBtnText"):GetWidth() do
@@ -745,7 +762,7 @@ function BetterQuestLog:AddQuestToLog(wndCategory, queQuest)
 				end
 			end
 		end
-		
+
 		wndTop:FindChild("TopLevelBtnText"):SetText(totalText)
 
 		-- if the quest button is checked, change it's text color to indicate that it is selected
@@ -756,7 +773,7 @@ function BetterQuestLog:AddQuestToLog(wndCategory, queQuest)
 		end
 
 		wndTop:FindChild("TopLevelBtnIcon"):SetSprite(strBottomLevelIconSprite)
-	
+
 		-- Set the appropriate sprite icon and tooltip for middle level
 		--if bFilteringFinished or bHasCompletedQuest then
 		--	wndTop:FindChild("TopLevelIcon"):SetSprite("CRB_Basekit:kitIcon_Holo_Checkbox")
@@ -779,24 +796,24 @@ function BetterQuestLog:ResizeTree()
 				self.tSavedData.expanded[label] = nil -- only preserves first opening
 			end
 		end
-	
-	
+
+
 		if not wndCategory:FindChild("PreviousTopLevelBtn"):IsChecked() then
 			wndCategory:FindChild("PreviousTopLevelItems"):DestroyChildren()
 		end
-		
+
 		local function SortByDifficulty(a, b)
 			local aData = a:FindChild("TopLevelBtn"):GetData()
 			local bData = b:FindChild("TopLevelBtn"):GetData()
 			--a:FindChild("TopLevelBtnText"):SetText(aData:GetColoredDifficulty() .. " < " .. bData:GetTitle())
 			--b:FindChild("TopLevelBtnText"):SetText(bData:GetColoredDifficulty() .. " > " .. aData:GetTitle())
-			
+
 			if aData:GetConLevel() ~= bData:GetConLevel() then
 				return bData:GetConLevel() > aData:GetConLevel()
 			else
 				return bData:GetTitle() > aData:GetTitle()
 			end
-			
+
 			--return (b:FindChild("TopLevelBtn"):GetData():GetColoredDifficulty()) > (a:FindChild("TopLevelBtn"):GetData():GetColoredDifficulty())
 		end
 		--wndCategory:FindChild("PreviousTopLevelItem"):SetSprite(wndCategory:FindChild("PreviousTopLevelBtn"):IsChecked() and "kitInnerFrame_MetalGold_FrameBright2" or "kitInnerFrame_MetalGold_FrameDull")
@@ -878,7 +895,7 @@ function BetterQuestLog:ResizeRight()
 	else
 		self.wndMain:FindChild("QuestInfoControls"):Show(true)
 	end
-	
+
 	self.wndMain:FindChild("RightSide"):ArrangeChildrenVert(0)
 	self.wndMain:FindChild("RightSide"):RecalculateContentExtents()
 end
@@ -907,9 +924,9 @@ function BetterQuestLog:DrawRightSide(queSelected)
 	end
 
 	local wndRight = self.wndMain:FindChild("RightSide")
-	
+
 	--self.wndMain:FindChild("QuestInfoControls"):Show(true)
-	
+
 	local eQuestState = queSelected:GetState()
 
 	-- Text Summary
@@ -933,20 +950,20 @@ function BetterQuestLog:DrawRightSide(queSelected)
 			wndRight:FindChild("QuestInfoTitle"):SetText(queSelected:GetTitle())
 		end
 	end
-	
+
 	local tConData = ktConToUI[nDifficulty]
 	if tConData then
 		local strDifficulty = "<T Font=\"CRB_InterfaceMedium\" TextColor=\"" .. tConData[2] .. "\"> " .. tConData[3] .. "</T>"
 		wndRight:FindChild("QuestInfoTitle"):SetText(queSelected:GetTitle())
 		wndRight:FindChild("QuestInfoTitle"):SetTextColor(ApolloColor.new("white"))
 	end
-	
+
 	wndRight:FindChild("QuestInfoDescriptionText"):SetAML("<P Font=\"CRB_InterfaceMedium\" TextColor=\"ff2f94ac\">"..strQuestSummary.."</P>")
 	wndRight:FindChild("QuestInfoDescriptionText"):SetHeightToContentHeight()
 
 	-- Episode Summary
-	local epiParent = queSelected:GetEpisode()	
-	
+	local epiParent = queSelected:GetEpisode()
+
 	-- it's possible that we can't get the episode if our player doesn't have the episode
 	if epiParent ~= nil then
 		local bIsTasks = epiParent:GetId() == 1
@@ -959,7 +976,7 @@ function BetterQuestLog:DrawRightSide(queSelected)
 				strEpisodeDesc = epiParent:GetDesc()
 			end
 		end
-		
+
 		wndRight:FindChild("EpisodeSummaryTitle"):SetText(self:HelperEpisodeSummaryText(epiParent:GetTitle(), false))
 		wndRight:FindChild("EpisodeSummaryTitle2"):SetText(self:HelperEpisodeSummaryText(epiParent:GetTitle(), true))
 		wndRight:FindChild("EpisodeSummaryProgText"):SetAML(string.format("<P Font=\"CRB_InterfaceSmall\" TextColor=\"ff31fcf6\" Align=\"Center\">"..
@@ -972,17 +989,17 @@ function BetterQuestLog:DrawRightSide(queSelected)
 		"(<T Font=\"CRB_InterfaceSmall\" TextColor=\"ffffb62e\" Align=\"Center\">%s</T>/%s)</P>", 0, 0))
 		wndRight:FindChild("EpisodeSummaryPopoutText"):SetAML("<P Font=\"CRB_InterfaceMedium\" TextColor=\"ff2f94ac\">Could not get episode information due to this being a linked quest. If this quest was not linked, please let OctanePenguin know how you got to this point.</P>")
 	end
-		
+
 	-- More Info
 	local strMoreInfo = ""
 	local tMoreInfoText = queSelected:GetMoreInfoText()
-	
+
 	-- this automatically opens our more info button if it exists
 	--if #tMoreInfoText > 0 and not self.wndMain:FindChild("QuestInfoMoreInfoToggleBtn"):IsChecked() then
 	--	self.wndMain:FindChild("QuestInfoMoreInfoToggleBtn"):SetCheck(true)
 	--	self.wndMain:FindChild("QuestInfoMoreInfoToggleBtnText"):SetText(Apollo.GetString("QuestLog_ClosePlaybackLog"))
 	--end
-		
+
 	if #tMoreInfoText > 0 then --and self.wndMain:FindChild("QuestInfoMoreInfoToggleBtn"):IsChecked() then
 		wndRight:FindChild("QuestInfoMoreInfoText"):Show(true)
 		for idx, tValues in pairs(tMoreInfoText) do
@@ -1103,17 +1120,17 @@ function BetterQuestLog:OnMiddleLevelBtnCheck(wndHandler, wndControl)
 end
 
 -- converted to use top button
-function BetterQuestLog:OnBottomLevelBtnCheck(wndHandler, wndControl) -- From Button or OnQuestObjectiveUpdated	
+function BetterQuestLog:OnBottomLevelBtnCheck(wndHandler, wndControl) -- From Button or OnQuestObjectiveUpdated
 	wndHandler:SetCheck(true)
 	local queQuest = wndHandler:GetData()
 	local nDifficulty = queQuest:GetColoredDifficulty()
 	local tConData = ktConToUINoAlpha[nDifficulty]
-	
+
 	-- Text Coloring
 	if self.wndLastBottomLevelBtnSelection and self.wndLastBottomLevelBtnSelection:IsValid() then
 		self.wndLastBottomLevelBtnSelection:FindChild("TopLevelBtnText"):SetTextColor("FF"..tConData[2])
 	end
-	
+
 	--wndHandler:FindChild("TopLevelBtn"):SetBGColor(tConData[2])
 	--wndHandler:FindChild("TopLevelBtn"):SetSprite("ActionSetBuilder_TEMP:spr_TEMP_ActionSetBarFrame_Stretch")]
 	local myBg = wndHandler:GetParent():FindChild("BottomLevelQuestLinkBtn"):FindChild("ProgressBarBG")
@@ -1135,14 +1152,14 @@ end
 	--local nDifficulty = queQuest:GetColoredDifficulty()
 	--local tConData = ktConToUI[nDifficulty]
 	--wndHandler:FindChild("TopLevelBtnText"):SetTextColor(tConData[2])
-	
+
 	-- Track this if the user was holding shift
 	--if Apollo.IsShiftKeyDown() then
 	--	BetterQuestLog:OnQuestTrackProgrammatically(wndHandler, wndControl)
 	---end
-	
-	
-	
+
+
+
 	--self.wndMain:FindChild("QuestInfoControls"):Show(false)
 	--self.wndMain:FindChild("RightSide"):Show(false)
 	--self:RedrawEverything() -- Not Needed
@@ -1159,10 +1176,10 @@ end
 -----------------------------------------------------------------------------------------------
 
 function BetterQuestLog:OnQuestTrackBtn(wndHandler, wndControl) -- QuestTrackBtn
-	local queSelected = self.wndMain:FindChild("RightSide"):GetData()	
+	local queSelected = self.wndMain:FindChild("RightSide"):GetData()
 	local bNewTrackValue = not queSelected:IsTracked()
 	queSelected:SetTracked(bNewTrackValue)
-	self.wndMain:FindChild("QuestTrackBtn"):SetText(bNewTrackValue and Apollo.GetString("QuestLog_Untrack") or Apollo.GetString("QuestLog_Track")) 
+	self.wndMain:FindChild("QuestTrackBtn"):SetText(bNewTrackValue and Apollo.GetString("QuestLog_Untrack") or Apollo.GetString("QuestLog_Track"))
 	self.wndMain:FindChild("QuestTrackBtn"):SetTooltip(bNewTrackValue and Apollo.GetString("QuestLog_RemoveFromTracker") or Apollo.GetString("QuestLog_AddToTracker"))
 	Event_FireGenericEvent("GenericEvent_QuestLog_TrackBtnClicked", queSelected)
 	self:RedrawEverything() --lazy, I just want checkmarks to be redrawn, potentially could be optimized/removed instead of redrawing everything
@@ -1231,7 +1248,7 @@ function BetterQuestLog:OnQuestStateChanged(queUpdated, eState)
 	end
 
 	local queCurrent = self.wndMain:FindChild("RightSide"):GetData()
-	
+
 	if eState == Quest.QuestState_Abandoned or eState == Quest.QuestState_Completed then
 		self:OnDestroyQuestObject(queUpdated)
 		self:RedrawEverything() --added this so when it's abandoned it will redraw properly
@@ -1250,9 +1267,9 @@ function BetterQuestLog:OnQuestStateChanged(queUpdated, eState)
 			self.wndMain:FindChild("QuestInfoControls"):Show(false)
 		end
 	end
-	
+
 	self:UpdateActiveQuestTable(queUpdated)
-	
+
 	-- only broadcast updates if we're in a group
 	if self.isDebugMode then
 		self:BroadcastUpdate(queUpdated)
@@ -1265,7 +1282,7 @@ function BetterQuestLog:BroadcastActiveQuests()
 	if self.activeQuests == nil then
 		self:CreateActiveQuestsTable()
 	end
-	
+
 	if self.bqlChannel == nil then
 		self:JoinBQLChannel() -- give it another shot...
 		if self.bqlChannel == nil then
@@ -1273,7 +1290,7 @@ function BetterQuestLog:BroadcastActiveQuests()
 			return
 		end
 	end
-	
+
 	for key, quest in pairs(self.activeQuests) do
 		self:BroadcastUpdate(quest)
 	end
@@ -1291,22 +1308,22 @@ function BetterQuestLog:BroadcastUpdate(queUpdated)
 	msg.strEventName = "QuestUpdated" -- had a quest update
 	msg.strQuestId = queUpdated:GetId() -- with the quest id of this
 	msg.eQuestState = queUpdated:GetState() -- and here's my new state
-	
-	self.bqlChannel:SendMessage(msg) -- send it out!
-	
+
+  self.bqlChannel:SendMessage(JSON.encode(msg)) -- send it out!
+
 	if self.isDebugMode then
 		if self.sentCount == nil then
 			self.sentCount = 0
 		end
-	
+
 		if self.bqlSent == nil then
 			self.bqlSent = {}
 		end
-	
+
 		self.bqlSent[self.sentCount] = msg
 		self.bqlSent[self.sentCount].questName = queUpdated:GetTitle()
 		self.sentCount = self.sentCount + 1
-	
+
 		if self.isSoloMode then
 			self:OnBQLMessage(nil, msg)
 		end
@@ -1333,16 +1350,16 @@ function BetterQuestLog:RequestGroupBroadcast()
 		log:debug("Was going to request broadcast but bqlChannel was nil, this is due to not finding a leader for the group")
 		return
 	end
-	
+
 	local nMembers = GroupLib.GetMemberCount()
-	
+
 	if nMembers > 0 then
 		local msg = {}
 		msg.strEventName = "RequestBroadcast"
 		for i=1,nMembers do
 			msg.strPlayerName = GroupLib.GetGroupMember(i).strCharacterName
 			if msg.strPlayerName ~= myPlayerName then -- don't request a broadcast from myself
-				local result = self.bqlChannel:SendMessage(msg)
+				local result = self.bqlChannel:SendMessage(JSON.encode(msg))
 				-- workaround for not being able to tell when i'm ready to send a message
 				if result == false then
 					log:debug("ReRequesting Broadcast")
@@ -1350,24 +1367,24 @@ function BetterQuestLog:RequestGroupBroadcast()
 					Apollo.StartTimer("ReRequestBroadcast")
 					break
 				end
-				
+
 				if self.sentCount == nil then
 					self.sentCount = 0
 				end
-				
+
 				if self.bqlSent == nil then
 					self.bqlSent = {}
 				end
-				
+
 				self.bqlSent[self.sentCount] = msg
 				self.sentCount = self.sentCount + 1
 				--self:OnBQLMessage(nil, msg)
-			end			
+			end
 		end
 	end
 end
 
-function BetterQuestLog:OnGroupJoin()	
+function BetterQuestLog:OnGroupJoin()
 	log:debug("OnGroupJoin called")
 	self:OnPartyChange()
 	Apollo.CreateTimer("OnLoadFinishedTimer", 3, false)
@@ -1378,12 +1395,12 @@ end
 
 function BetterQuestLog:OnQuestObjectiveUpdated(queUpdated)
 	local queCurrent = self.wndMain:FindChild("RightSide"):GetData()
-	
+
 	-- only broadcast updates if we're in a group
 	if GroupLib.InGroup() or GroupLib.InRaid() then
 		self:BroadcastUpdate(queUpdated)
 	end
-	
+
 	if queCurrent and queCurrent:GetId() == queUpdated:GetId() then
 		if queCurrent:GetState() == Quest.QuestState_Achieved then
 			self:OnDestroyQuestObject(queUpdated)
@@ -1604,7 +1621,7 @@ end
 function BetterQuestLog:OnExpandChecked( wndHandler, wndControl, eMouseButton )
 	for key, wndCategory in pairs(self.wndMain:FindChild("LeftSideScroll"):GetChildren()) do
 		wndCategory:FindChild("PreviousTopLevelBtn"):SetCheck(true)
-	end	
+	end
 	self:RedrawLeftTree()
 end
 
@@ -1617,7 +1634,7 @@ end
 
 function BetterQuestLog:CheckTrackedToggle( wndHandler, wndControl, eMouseButton )
 	local wndTopBtn = wndHandler:GetParent():FindChild("TopLevelBtn")
-	
+
 	if eMouseButton == 1 and Apollo.IsShiftKeyDown() then
 		Event_FireGenericEvent("GenericEvent_QuestLink", wndTopBtn:GetData())
 	elseif Apollo.IsShiftKeyDown() then
@@ -1631,7 +1648,7 @@ function BetterQuestLog:CheckTrackedToggle( wndHandler, wndControl, eMouseButton
 		-- if the button we selected is not checked, check it
 		if lastSelected ~= nil then
 			lastSelected:SetCheck(false)
-			
+
 			if lastSelected:GetParent() ~= nil and lastSelected:GetParent():FindChild("BottomLevelQuestLinkBtn") ~= nil then
 				local lastBg = lastSelected:GetParent():FindChild("BottomLevelQuestLinkBtn"):FindChild("ProgressBarBG")
 				lastBg:Show(false)
@@ -1640,7 +1657,7 @@ function BetterQuestLog:CheckTrackedToggle( wndHandler, wndControl, eMouseButton
 		lastSelected = wndTopBtn
 		self:OnBottomLevelBtnCheck(wndTopBtn, wndTopBtn)
 	end
-	
+
 	self:RedrawEverything()
 end
 
@@ -1653,12 +1670,12 @@ function BetterQuestLog:OnSave(eLevel)
 	if eLevel ~= GameLib.CodeEnumAddonSaveLevel.Character then
 		return nil
 	end
-	
+
 	-- create a table to hold our data
 	local tSave = {}
 	tSave.showLevel = self.wndMain:FindChild("ShowLevelCheckboxBtn"):IsChecked()
 	tSave.expanded = {}
-	
+
 	-- iterate and figure out which elements are expanded and which ones are not
 	for key, wndCategory in pairs(self.wndMain:FindChild("LeftSideScroll"):GetChildren()) do
 		if wndCategory:FindChild("PreviousTopLevelBtn"):IsChecked() then
@@ -1667,8 +1684,8 @@ function BetterQuestLog:OnSave(eLevel)
 		end
 		wndCategory:FindChild("PreviousTopLevelBtn"):SetCheck(false) -- changes the expanded property
 	end
-	
-	return tSave		
+
+	return tSave
 end
 
 function BetterQuestLog:OnRestore(eLevel, tData)
