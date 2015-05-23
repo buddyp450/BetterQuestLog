@@ -364,6 +364,8 @@ function BetterQuestLog:OnBQLMessage(channel, tMsg)
 	-- two things happen here, i can receive an update, or i can receive a request for a full broadcast
 	-- either way, neither matter if i'm not in a group
 
+	tMsg = JSON.decode(tMsg)
+	
 	--debug
 	if self.isDebugMode then
 		if self.recCount == nil then
